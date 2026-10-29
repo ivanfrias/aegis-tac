@@ -112,6 +112,9 @@ public class WatchRadarView extends View implements SensorEventListener {
     private boolean headUpMode = true;
     private boolean enemyPingArmed = false;
 
+    public static final String APP_VERSION = "v1.2.0";
+    public static final int APP_BUILD = 2;
+
     // Default to TOP_5 so swarmed environments stay clean and readable
     private FilterMode filterMode = FilterMode.TOP_5;
     private int zoomIndex = 2; // 20m default on watch (ZOOM_SCALES[2] = 20m)
@@ -119,7 +122,7 @@ public class WatchRadarView extends View implements SensorEventListener {
 
     private float headingDeg = 0f;
     private float sweepAngleRad = 0f;
-    private String statusBanner = "MODE: CLOSEST 5";
+    private String statusBanner = "AEGISTAC " + APP_VERSION + " • READY";
 
     // Sensors
     private final SensorManager sensorManager;
@@ -144,6 +147,7 @@ public class WatchRadarView extends View implements SensorEventListener {
     private final RectF bottomModeRect = new RectF();
     private final RectF bottomClrRect = new RectF();
     private final RectF quitBtnRect = new RectF();
+    private final RectF versionRect = new RectF();
 
     // Paints
     private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -940,6 +944,14 @@ public class WatchRadarView extends View implements SensorEventListener {
         // BOTTOM 6 O'CLOCK ROW: [HD-UP] [CLR] [QUIT]
         float botBtnW = minDim * 0.18f;
         float botY = h - minDim * 0.024f - topPillH;
+
+        // Dedicated Version Badge right above bottom buttons
+        float versionY = botY - minDim * 0.016f;
+        versionRect.set(cx - minDim * 0.25f, versionY - minDim * 0.024f, cx + minDim * 0.25f, versionY + minDim * 0.008f);
+        textPaint.setTextSize(minDim * 0.022f);
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        textPaint.setColor(Color.argb(165, 52, 211, 153));
+        canvas.drawText("AEGISTAC " + APP_VERSION, cx, versionY, textPaint);
         bottomModeRect.set(cx - botBtnW * 1.5f - 6f, botY, cx - botBtnW * 0.5f - 6f, botY + topPillH);
         bottomClrRect.set(cx - botBtnW * 0.5f, botY, cx + botBtnW * 0.5f, botY + topPillH);
         quitBtnRect.set(cx + botBtnW * 0.5f + 6f, botY, cx + botBtnW * 1.5f + 6f, botY + topPillH);
@@ -1064,6 +1076,12 @@ public class WatchRadarView extends View implements SensorEventListener {
             if (permissionRequester != null) {
                 permissionRequester.quitWatchApp();
             }
+            return true;
+        }
+
+        if (versionRect.contains(x, y)) {
+            statusBanner = "AEGISTAC " + APP_VERSION + " (BUILD " + APP_BUILD + ")";
+            vibrateWatch(45);
             return true;
         }
 

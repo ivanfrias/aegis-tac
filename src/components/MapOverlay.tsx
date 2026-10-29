@@ -15,10 +15,13 @@ interface MapOverlayProps {
 const FALLBACK_COORDS: [number, number] = [37.7749, -122.4194];
 
 function rangeToZoomLevel(rangeMeters: number): number {
-  if (rangeMeters <= 25) return 18;
-  if (rangeMeters <= 50) return 17;
-  if (rangeMeters <= 90) return 16;
-  return 15;
+  if (rangeMeters <= 5) return 20.5;
+  if (rangeMeters <= 10) return 19.5;
+  if (rangeMeters <= 20) return 18.5;
+  if (rangeMeters <= 35) return 17.5;
+  if (rangeMeters <= 50) return 16.8;
+  if (rangeMeters <= 75) return 16.0;
+  return 15.0;
 }
 
 export const MapOverlay: React.FC<MapOverlayProps> = ({
@@ -43,6 +46,8 @@ export const MapOverlay: React.FC<MapOverlayProps> = ({
     const map = L.map(containerRef.current, {
       center: [effectiveLat, effectiveLng],
       zoom: rangeToZoomLevel(maxRangeMeters),
+      zoomSnap: 0.1,
+      zoomDelta: 0.5,
       zoomControl: false,
       attributionControl: false,
       dragging: false,
@@ -55,8 +60,8 @@ export const MapOverlay: React.FC<MapOverlayProps> = ({
     const satUrl =
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
     const layer = L.tileLayer(satUrl, {
-      maxNativeZoom: 17,
-      maxZoom: 19,
+      maxNativeZoom: 18,
+      maxZoom: 22,
       crossOrigin: true,
     }).addTo(map);
 

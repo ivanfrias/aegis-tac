@@ -98,14 +98,33 @@ export const WatchHud: React.FC<WatchHudProps> = ({
   onQuitApp,
 }) => {
   const closestBogey = contacts.find((c) => !c.isFriendly);
+  const [zoomToast, setZoomToast] = React.useState<string | null>(null);
+  const toastTimeoutRef = React.useRef<number | null>(null);
+  const lastWheelTime = React.useRef<number>(0);
+
+  const showZoomFeedback = (msg: string) => {
+    setZoomToast(msg);
+    if (toastTimeoutRef.current) window.clearTimeout(toastTimeoutRef.current);
+    toastTimeoutRef.current = window.setTimeout(() => setZoomToast(null), 1200);
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    const now = Date.now();
+    if (now - lastWheelTime.current < 200) return;
+    lastWheelTime.current = now;
+    if (e.deltaY < 0) {
+      onZoomIn();
+      showZoomFeedback('ZOOM IN');
+    } else if (e.deltaY > 0) {
+      onZoomOut();
+      showZoomFeedback('ZOOM OUT');
+    }
+  };
 
   return (
     <div
       className="fixed inset-0 z-40 bg-black flex flex-col items-center justify-center overflow-hidden select-none"
-      onWheel={(e) => {
-        if (e.deltaY < 0) onZoomIn();
-        else if (e.deltaY > 0) onZoomOut();
-      }}
+      onWheel={handleWheel}
     >
       {/* Circular Smartwatch Bezel Frame (Fits 100% edge-to-edge on Galaxy Watch 5, or renders a circular watch dial on Phone/Desktop) */}
       <div className="relative w-[min(100dvw,100dvh,420px)] h-[min(100dvw,100dvh,420px)] rounded-full bg-[#040a06] border-4 border-emerald-500/40 shadow-[0_0_40px_rgba(16,185,129,0.22)] flex items-center justify-center overflow-hidden">
@@ -129,23 +148,36 @@ export const WatchHud: React.FC<WatchHudProps> = ({
           />
         </div>
 
+        {/* Transient Zoom Feedback Toast */}
+        {zoomToast && (
+          <div className="absolute top-12 left-1/2 -translate-x-1/2 z-30 px-3 py-0.5 rounded-full bg-emerald-400 text-black font-mono text-[10px] font-black border border-white shadow-[0_0_15px_rgba(52,211,153,0.85)] animate-bounce pointer-events-none whitespace-nowrap">
+            {zoomToast} • {maxRangeMeters}m
+          </div>
+        )}
+
         {/* ===============================================================
             12 O'CLOCK BEZEL: Zoom Out (-) / Threat & Range Pill / Zoom In (+)
            =============================================================== */}
-        <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5">
           <button
             type="button"
-            onClick={onZoomOut}
-            className="w-7 h-7 rounded-full bg-[#07150e]/95 border border-emerald-400/60 text-emerald-200 flex items-center justify-center font-mono text-sm font-extrabold shadow-lg cursor-pointer active:scale-95"
-            title="Zoom Out (Increase radar range scale)"
+            onClick={() => {
+              onZoomOut();
+              showZoomFeedback('ZOOM OUT');
+            }}
+            className="w-8 h-8 rounded-full bg-[#07150e]/95 hover:bg-emerald-950/90 border border-emerald-400/70 text-emerald-200 flex items-center justify-center font-mono text-base font-black shadow-lg cursor-pointer active:scale-90 transition select-none"
+            title="Zoom Out (-): Increase radar range scale"
           >
-            <ZoomOut className="w-3.5 h-3.5" />
+            −
           </button>
 
           <button
             type="button"
-            onClick={onCycleRange}
-            className={`px-2.5 py-1 rounded-full font-mono text-[10px] font-extrabold border backdrop-blur-md shadow-lg cursor-pointer transition ${
+            onClick={() => {
+              onCycleRange();
+              showZoomFeedback('SCALE');
+            }}
+            className={`px-2.5 py-1 rounded-full font-mono text-[10px] font-extrabold border backdrop-blur-md shadow-lg cursor-pointer transition select-none ${
               closestBogey
                 ? closestBogey.distanceMeters <= 12
                   ? 'bg-red-950/90 border-red-400 text-red-100 animate-pulse'
@@ -161,11 +193,14 @@ export const WatchHud: React.FC<WatchHudProps> = ({
 
           <button
             type="button"
-            onClick={onZoomIn}
-            className="w-7 h-7 rounded-full bg-[#07150e]/95 border border-emerald-400/60 text-emerald-200 flex items-center justify-center font-mono text-sm font-extrabold shadow-lg cursor-pointer active:scale-95"
-            title="Zoom In (Decrease radar range scale for close quarters)"
+            onClick={() => {
+              onZoomIn();
+              showZoomFeedback('ZOOM IN');
+            }}
+            className="w-8 h-8 rounded-full bg-[#07150e]/95 hover:bg-emerald-950/90 border border-emerald-400/70 text-emerald-200 flex items-center justify-center font-mono text-base font-black shadow-lg cursor-pointer active:scale-90 transition select-none"
+            title="Zoom In (+): Decrease radar range scale for close quarters"
           >
-            <ZoomIn className="w-3.5 h-3.5" />
+            +
           </button>
         </div>
 
@@ -262,6 +297,13 @@ export const WatchHud: React.FC<WatchHudProps> = ({
             )}
             <span>{playerStatus === 'ACTIVE' ? 'OK' : playerStatus}</span>
           </button>
+        </div>
+
+        {/* 6 O'CLOCK BEZEL: Version & Controls */}
+        <div className="absolute bottom-9 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+          <span className="text-[8px] font-mono font-extrabold text-emerald-400/60 tracking-wider">
+            v1.2.0
+          </span>
         </div>
 
         {/* ===============================================================

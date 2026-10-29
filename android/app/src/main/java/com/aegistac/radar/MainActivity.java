@@ -10,6 +10,7 @@ import android.os.Bundle;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.WebView;
+import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -45,6 +46,7 @@ public class MainActivity extends Activity implements WatchRadarView.PermissionR
 
         watchRadarView = new WatchRadarView(this, this);
         setContentView(watchRadarView);
+        Toast.makeText(this, "AegisTac " + WatchRadarView.APP_VERSION, Toast.LENGTH_SHORT).show();
         requestBlePermissions();
     }
 

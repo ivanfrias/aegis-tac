@@ -583,20 +583,16 @@ export const App: React.FC = () => {
 
   const handleZoomIn = () => {
     setMaxRangeMeters((prev) => {
-      const idx = RADAR_ZOOM_SCALES.findIndex((s) => s >= prev);
-      const safeIdx = idx === -1 ? RADAR_ZOOM_SCALES.length - 1 : idx;
-      return RADAR_ZOOM_SCALES[Math.max(0, safeIdx - 1)];
+      const smaller = [...RADAR_ZOOM_SCALES].reverse().find((s) => s < prev);
+      return smaller ?? RADAR_ZOOM_SCALES[0];
     });
     playTacticalTone(960, 45);
   };
 
   const handleZoomOut = () => {
     setMaxRangeMeters((prev) => {
-      const idx = RADAR_ZOOM_SCALES.findIndex((s) => s >= prev);
-      const safeIdx = idx === -1 ? RADAR_ZOOM_SCALES.length - 1 : idx;
-      return RADAR_ZOOM_SCALES[
-        Math.min(RADAR_ZOOM_SCALES.length - 1, safeIdx + 1)
-      ];
+      const larger = RADAR_ZOOM_SCALES.find((s) => s > prev);
+      return larger ?? RADAR_ZOOM_SCALES[RADAR_ZOOM_SCALES.length - 1];
     });
     playTacticalTone(740, 45);
   };
@@ -604,6 +600,10 @@ export const App: React.FC = () => {
   const handleCycleRange = () => {
     setMaxRangeMeters((prev) => {
       const idx = RADAR_ZOOM_SCALES.indexOf(prev);
+      if (idx === -1) {
+        const larger = RADAR_ZOOM_SCALES.find((s) => s > prev);
+        return larger ?? RADAR_ZOOM_SCALES[0];
+      }
       return RADAR_ZOOM_SCALES[(idx + 1) % RADAR_ZOOM_SCALES.length];
     });
     playTacticalTone(840, 45);
@@ -651,6 +651,7 @@ export const App: React.FC = () => {
             <div className="min-w-0">
               <div className="font-mono text-xs font-extrabold tracking-wider text-emerald-300 flex items-center gap-1.5 truncate">
                 <span className="truncate">AEGISTAC</span>
+                <span className="text-[9px] font-mono text-emerald-400/60 font-semibold">v1.2.0</span>
                 <span className="text-[10px] bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.2 rounded text-emerald-200 shrink-0">
                   {callsign}
                 </span>
