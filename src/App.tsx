@@ -103,6 +103,7 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
   const [whitelist, setWhitelist] = useState<WhitelistedDevice[]>([]);
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [simEnabled, setSimEnabled] = useState<boolean>(false);
+  const [bleOnlyMode, setBleOnlyMode] = useState<boolean>(false);
   const [scanStatusText, setScanStatusText] = useState<string>(
     'Ready. Tap SCAN / BLE SWEEP for live Bluetooth, or SIM: ON to test.'
   );
@@ -660,7 +661,7 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
             <div className="w-full max-w-[310px] sm:max-w-[360px] mx-auto">
               <RadarDisplay
                 contacts={contacts}
-                squadMembers={squadMembers}
+                squadMembers={bleOnlyMode ? [] : squadMembers}
                 selfPeerId={selfPeerId}
                 pings={pings}
                 selfLat={selfLat}
@@ -676,8 +677,8 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
               />
             </div>
 
-            {/* Quick Corner Pills under Radar (Map, Compass, Range Cycle) */}
-            <div className="mt-1 flex items-center justify-center gap-2 text-[10px] font-mono">
+            {/* Quick Corner Pills under Radar (Map, Compass, Range Cycle, BLE Only) */}
+            <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5 text-[10px] font-mono">
               <button
                 onClick={() => setShowSatellite((v) => !v)}
                 className={`px-2 py-0.5 rounded border flex items-center gap-1 cursor-pointer ${
@@ -708,6 +709,19 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
                 className="px-2 py-0.5 rounded border bg-emerald-500/20 border-emerald-400/50 text-emerald-200 font-bold cursor-pointer"
               >
                 RANGE: {maxRangeMeters}m
+              </button>
+
+              <button
+                onClick={() => setBleOnlyMode((v) => !v)}
+                className={`px-2 py-0.5 rounded border flex items-center gap-1 font-bold cursor-pointer transition ${
+                  bleOnlyMode
+                    ? 'bg-cyan-400 text-black border-cyan-200 shadow-[0_0_8px_rgba(34,211,238,0.45)]'
+                    : 'bg-black/40 border-cyan-500/30 text-cyan-300/80 hover:text-cyan-200'
+                }`}
+                title="Toggle Bluetooth-Only radar mode (hides Squad GPS dots)"
+              >
+                <Bluetooth className="w-3 h-3" />
+                <span>{bleOnlyMode ? 'BLE ONLY: ON' : 'BLE ONLY'}</span>
               </button>
             </div>
           </div>
@@ -832,7 +846,7 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
             <div className="w-full max-w-[230px] sm:max-w-[300px] lg:max-w-[360px] mx-auto">
               <RadarDisplay
                 contacts={contacts}
-                squadMembers={squadMembers}
+                squadMembers={bleOnlyMode ? [] : squadMembers}
                 selfPeerId={selfPeerId}
                 pings={pings}
                 selfLat={selfLat}
@@ -848,7 +862,7 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
               />
             </div>
 
-            <div className="mt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] font-mono text-emerald-300/80">
+            <div className="mt-1 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[10px] font-mono text-emerald-300/80">
               <span className="flex items-center gap-1">
                 <span className="w-2 h-1 rounded bg-amber-400 inline-block" />
                 Bogey Arc
@@ -857,14 +871,27 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
                 <span className="w-1.5 h-1.5 rotate-45 bg-cyan-400 inline-block" />
                 Ally BLE
               </span>
-              <span className="flex items-center gap-1">
+              <span
+                className={`flex items-center gap-1 ${
+                  bleOnlyMode ? 'line-through opacity-40' : ''
+                }`}
+              >
                 <span className="w-1.5 h-1.5 rounded-full bg-sky-400 inline-block" />
                 Squad GPS
               </span>
-              <span className="flex items-center gap-1">
-                <Navigation className="w-2.5 h-2.5 text-emerald-400 inline" />
-                {playerStatus}
-              </span>
+              <button
+                type="button"
+                onClick={() => setBleOnlyMode((v) => !v)}
+                className={`px-1.5 py-0.5 rounded border flex items-center gap-1 font-bold cursor-pointer transition ${
+                  bleOnlyMode
+                    ? 'bg-cyan-400 text-black border-cyan-200 shadow-[0_0_8px_rgba(34,211,238,0.45)]'
+                    : 'bg-black/40 border-cyan-500/35 text-cyan-300 hover:text-cyan-200'
+                }`}
+                title="Toggle Bluetooth-Only radar mode (hides Squad GPS dots)"
+              >
+                <Bluetooth className="w-2.5 h-2.5" />
+                <span>{bleOnlyMode ? 'BLE ONLY: ON' : 'BLE ONLY'}</span>
+              </button>
             </div>
           </div>
 
@@ -916,6 +943,8 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
                 isScanning={isScanning}
                 scanStatusText={scanStatusText}
                 simEnabled={simEnabled}
+                bleOnlyMode={bleOnlyMode}
+                onToggleBleOnlyMode={() => setBleOnlyMode((v) => !v)}
                 onStartPassiveScan={handleStartPassiveScan}
                 onStopScan={handleStopScan}
                 onPickDevice={handlePickDevice}

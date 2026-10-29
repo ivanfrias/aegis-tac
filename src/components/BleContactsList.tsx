@@ -18,6 +18,8 @@ interface BleContactsListProps {
   isScanning: boolean;
   scanStatusText: string;
   simEnabled: boolean;
+  bleOnlyMode: boolean;
+  onToggleBleOnlyMode: () => void;
   onStartPassiveScan: () => void;
   onStopScan: () => void;
   onPickDevice: () => void;
@@ -33,6 +35,8 @@ export const BleContactsList: React.FC<BleContactsListProps> = ({
   isScanning,
   scanStatusText,
   simEnabled,
+  bleOnlyMode,
+  onToggleBleOnlyMode,
   onStartPassiveScan,
   onStopScan,
   onPickDevice,
@@ -42,9 +46,15 @@ export const BleContactsList: React.FC<BleContactsListProps> = ({
   onSnapContactAhead,
 }) => {
   const [showCompatHelp, setShowCompatHelp] = useState(false);
+  const [filterType, setFilterType] = useState<'ALL' | 'BOGEY' | 'ALLY'>('ALL');
 
   const bogeyCount = contacts.filter((c) => !c.isFriendly).length;
   const friendlyCount = contacts.filter((c) => c.isFriendly).length;
+  const filteredContacts = contacts.filter((c) => {
+    if (filterType === 'BOGEY') return !c.isFriendly;
+    if (filterType === 'ALLY') return c.isFriendly;
+    return true;
+  });
 
   return (
     <div className="bg-[#08140e]/95 border border-emerald-500/25 rounded-xl p-2.5 flex flex-col gap-2">
@@ -52,24 +62,68 @@ export const BleContactsList: React.FC<BleContactsListProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-1.5">
         <div className="flex flex-wrap items-center gap-1.5">
           <Bluetooth className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-          <span className="font-mono text-[11px] font-bold tracking-wider uppercase text-emerald-200">
-            BLE Contacts
-          </span>
-          <span className="bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-mono px-1.5 py-0.5 rounded">
+          <button
+            type="button"
+            onClick={() => setFilterType('ALL')}
+            className={`font-mono text-[11px] font-bold tracking-wider uppercase cursor-pointer ${
+              filterType === 'ALL'
+                ? 'text-emerald-200 underline decoration-emerald-400'
+                : 'text-emerald-400/70 hover:text-emerald-200'
+            }`}
+          >
+            ALL ({contacts.length})
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              setFilterType((f) => (f === 'BOGEY' ? 'ALL' : 'BOGEY'))
+            }
+            className={`text-[10px] font-mono px-1.5 py-0.5 rounded border cursor-pointer ${
+              filterType === 'BOGEY'
+                ? 'bg-amber-400 text-black border-amber-200 font-bold'
+                : 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+            }`}
+          >
             {bogeyCount} BOGEY
-          </span>
-          <span className="bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-[10px] font-mono px-1.5 py-0.5 rounded">
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              setFilterType((f) => (f === 'ALLY' ? 'ALL' : 'ALLY'))
+            }
+            className={`text-[10px] font-mono px-1.5 py-0.5 rounded border cursor-pointer ${
+              filterType === 'ALLY'
+                ? 'bg-cyan-400 text-black border-cyan-200 font-bold'
+                : 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300'
+            }`}
+          >
             {friendlyCount} ALLY
-          </span>
+          </button>
         </div>
 
-        <button
-          onClick={() => setShowCompatHelp((v) => !v)}
-          className="text-emerald-400/80 hover:text-emerald-300 text-[11px] font-mono flex items-center gap-1 cursor-pointer"
-        >
-          <Info className="w-3.5 h-3.5" />
-          <span>Setup</span>
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onToggleBleOnlyMode}
+            className={`px-2 py-0.5 rounded border font-mono text-[10px] font-bold flex items-center gap-1 cursor-pointer transition ${
+              bleOnlyMode
+                ? 'bg-cyan-400 text-black border-cyan-200 shadow-[0_0_8px_rgba(34,211,238,0.4)]'
+                : 'bg-black/50 border-emerald-500/30 text-emerald-300/80 hover:text-emerald-200'
+            }`}
+            title="Show only Bluetooth (BLE) devices on the radar (hides Squad GPS dots)"
+          >
+            <Bluetooth className="w-3 h-3" />
+            <span>{bleOnlyMode ? 'BLE ONLY: ON' : 'BLE ONLY: OFF'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowCompatHelp((v) => !v)}
+            className="text-emerald-400/80 hover:text-emerald-300 text-[11px] font-mono flex items-center gap-1 cursor-pointer"
+          >
+            <Info className="w-3.5 h-3.5" />
+            <span>Setup</span>
+          </button>
+        </div>
       </div>
 
       {/* Action Buttons */}
@@ -146,12 +200,12 @@ export const BleContactsList: React.FC<BleContactsListProps> = ({
 
       {/* Contacts List */}
       <div className="max-h-36 overflow-y-auto space-y-1 pr-0.5">
-        {contacts.length === 0 ? (
+        {filteredContacts.length === 0 ? (
           <div className="text-center py-3 text-[11px] font-mono text-emerald-500/50">
             No BLE signals in range. Start Sweep or enable Sim.
           </div>
         ) : (
-          contacts.map((contact) => {
+          filteredContacts.map((contact) => {
             const isClose = contact.distanceMeters <= 12;
             return (
               <div
