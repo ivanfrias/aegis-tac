@@ -13,7 +13,7 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
             android:label="@string/title_activity_main"
-            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
             android:launchMode="singleTask"
             android:exported="true">
 
@@ -23,6 +23,14 @@
             </intent-filter>
 
         </activity>
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".PhoneBridgeActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
