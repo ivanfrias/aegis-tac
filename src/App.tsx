@@ -219,23 +219,35 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
   }, []);
 
   useEffect(() => {
+    let lastUiUpdate = 0;
+    let lastP2PUpdate = 0;
+
     const handleOrientation = (ev: DeviceOrientationEvent) => {
       const webkitCompass = (
         ev as unknown as { webkitCompassHeading?: number }
       ).webkitCompassHeading;
 
       let heading: number | null = null;
-      if (typeof webkitCompass === 'number') {
-        heading = webkitCompass;
-      } else if (typeof ev.alpha === 'number') {
-        heading = (360 - ev.alpha) % 360;
+      if (typeof webkitCompass === 'number' && Number.isFinite(webkitCompass)) {
+        heading = ((webkitCompass % 360) + 360) % 360;
+      } else if (typeof ev.alpha === 'number' && Number.isFinite(ev.alpha)) {
+        heading = ((360 - ev.alpha) % 360 + 360) % 360;
       }
 
       if (heading !== null) {
-        setHeadingDeg(heading);
-        setHasCompassLock(true);
+        const now = Date.now();
         bleEngineRef.current?.setCurrentHeading(heading);
-        p2pRef.current?.updateSelfState({ heading });
+
+        if (now - lastUiUpdate > 50) {
+          lastUiUpdate = now;
+          setHeadingDeg(heading);
+          setHasCompassLock(true);
+        }
+
+        if (now - lastP2PUpdate > 600) {
+          lastP2PUpdate = now;
+          p2pRef.current?.updateSelfState({ heading });
+        }
       }
     };
 
@@ -348,7 +360,7 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
       bearingDeg,
       distanceMeters,
       createdAt: now,
-      expiresAt: now + 45000,
+      expiresAt: now + 3600000 * 6, // Persist until manually cleared (up to 6 hours)
     };
 
     p2pRef.current?.sendTacticalPing(ping);
@@ -430,7 +442,7 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
       setSelfLng(baseLng);
     }
 
-    setSquadMembers((prev) => [...prev, mate]);
+    p2pRef.current?.addSimulatedMember(mate);
     playTacticalTone(940, 80);
   };
 

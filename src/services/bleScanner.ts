@@ -115,12 +115,12 @@ export class BleRadarEngine {
     this.onUpdateCallback = onUpdate;
     this.boundAdvHandler = this.handleAdvertisement.bind(this);
 
-    // Prune stale contacts older than 18 seconds every 2 seconds
+    // Prune stale passive contacts older than 60 seconds (never prune manually paired or whitelisted devices)
     this.cleanupInterval = window.setInterval(() => {
       const now = Date.now();
       let changed = false;
       for (const [id, contact] of this.contacts.entries()) {
-        if (now - contact.lastSeen > 18000) {
+        if (!contact.isFriendly && !contact.simulated && now - contact.lastSeen > 60000) {
           this.contacts.delete(id);
           changed = true;
         }
@@ -128,7 +128,7 @@ export class BleRadarEngine {
       if (changed) {
         this.emitUpdate();
       }
-    }, 2000);
+    }, 5000);
   }
 
   public setEnvironment(env: EnvironmentPreset) {

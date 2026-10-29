@@ -311,6 +311,11 @@ export class SquadP2PService {
     void this.sendMessage(msg);
   }
 
+  public addSimulatedMember(mate: SquadMember) {
+    this.members.set(mate.peerId, mate);
+    this.emitRoster();
+  }
+
   public sendTacticalPing(ping: TacticalPing) {
     this.pings.set(ping.id, ping);
     this.emitPings();
