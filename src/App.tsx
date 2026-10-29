@@ -19,6 +19,8 @@ import {
   Eye,
   Wrench,
   HelpCircle,
+  Trash2,
+  X,
 } from 'lucide-react';
 import {
   BleContact,
@@ -363,6 +365,17 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
     createAndBroadcastPing(type, Math.round(headingDeg), 20);
   };
 
+  const handleRemovePing = (pingId: string) => {
+    p2pRef.current?.removeTacticalPing(pingId);
+    playTacticalTone(640, 50);
+  };
+
+  const handleClearAllPings = () => {
+    p2pRef.current?.clearAllPings();
+    setActivePingTool(null);
+    playTacticalTone(580, 70);
+  };
+
   const handleBasicPingClick = (type: PingType) => {
     if (activePingTool === type) {
       handleQuickPingAhead(type);
@@ -583,6 +596,7 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
                 mapStyle={mapStyle}
                 activePingTool={activePingTool}
                 onRadarTapPing={handleRadarTapPing}
+                onRemovePing={handleRemovePing}
               />
             </div>
 
@@ -701,6 +715,35 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
                 <span>! OBJ</span>
               </button>
             </div>
+
+            {/* Active Pings Dismiss & Clear Row (appears whenever pings are on radar) */}
+            {pings.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-emerald-500/20">
+                <div className="flex flex-wrap items-center gap-1">
+                  {pings.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => handleRemovePing(p.id)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-950/80 hover:bg-red-900 border border-red-500/50 text-red-200 font-mono text-[10px] font-bold cursor-pointer"
+                      title="Tap to remove this ping"
+                    >
+                      <span>
+                        {p.type} {p.distanceMeters}m
+                      </span>
+                      <X className="w-3 h-3 text-red-400" />
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={handleClearAllPings}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white font-mono text-[10px] font-bold cursor-pointer shrink-0"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>CLEAR PINGS</span>
+                </button>
+              </div>
+            )}
           </div>
         </main>
       ) : (
@@ -725,6 +768,7 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
                 mapStyle={mapStyle}
                 activePingTool={activePingTool}
                 onRadarTapPing={handleRadarTapPing}
+                onRemovePing={handleRemovePing}
               />
             </div>
 
@@ -833,6 +877,7 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
               <TacticalControls
                 status={playerStatus}
                 activePingTool={activePingTool}
+                pings={pings}
                 environment={environment}
                 maxRangeMeters={maxRangeMeters}
                 headUpMode={headUpMode}
@@ -843,6 +888,8 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
                 onStatusChange={handleStatusChange}
                 onSelectPingTool={setActivePingTool}
                 onQuickPingAhead={handleQuickPingAhead}
+                onRemovePing={handleRemovePing}
+                onClearAllPings={handleClearAllPings}
                 onEnvironmentChange={handleEnvironmentChange}
                 onRangeChange={setMaxRangeMeters}
                 onToggleHeadUp={() => setHeadUpMode((v) => !v)}

@@ -73,6 +73,13 @@ export type P2PMessage =
       ping: TacticalPing;
     }
   | {
+      type: 'PING_REMOVE';
+      pingId: string;
+    }
+  | {
+      type: 'PINGS_CLEAR';
+    }
+  | {
       type: 'WHITELIST_ADD';
       entry: WhitelistedDevice;
     }

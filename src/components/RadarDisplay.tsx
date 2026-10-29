@@ -25,6 +25,7 @@ interface RadarDisplayProps {
   mapStyle: 'SATELLITE' | 'TOPO';
   activePingTool: PingType | null;
   onRadarTapPing: (bearingDeg: number, distanceMeters: number) => void;
+  onRemovePing?: (pingId: string) => void;
   onSelectContact?: (contact: BleContact) => void;
 }
 
@@ -42,6 +43,7 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = ({
   mapStyle,
   activePingTool,
   onRadarTapPing,
+  onRemovePing,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sweepAngleRef = useRef<number>(0);
@@ -55,16 +57,60 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = ({
   };
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!activePingTool || !canvasRef.current) return;
+    if (!canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
     const cx = rect.width / 2;
     const cy = rect.height / 2;
     const maxRadius = Math.min(cx, cy) * 0.88;
 
-    const dx = e.clientX - rect.left - cx;
-    const dy = e.clientY - rect.top - cy;
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    const dx = clickX - cx;
+    const dy = clickY - cy;
     const distPx = Math.sqrt(dx * dx + dy * dy);
     if (distPx > maxRadius) return;
+
+    // 1. If user is NOT placing a new ping (or taps directly on an existing ping), check if they tapped an existing ping to remove it
+    if (!activePingTool && onRemovePing && pings.length > 0) {
+      for (const ping of pings) {
+        let distMeters = ping.distanceMeters;
+        let bearingDeg = ping.bearingDeg;
+
+        if (
+          selfLat !== null &&
+          selfLng !== null &&
+          ping.lat != null &&
+          ping.lng != null
+        ) {
+          distMeters = calculateGpsDistanceMeters(
+            selfLat,
+            selfLng,
+            ping.lat,
+            ping.lng
+          );
+          bearingDeg = calculateGpsBearingDeg(
+            selfLat,
+            selfLng,
+            ping.lat,
+            ping.lng
+          );
+        }
+
+        const clampedDist = Math.min(maxRangeMeters, distMeters);
+        const radiusPx = (clampedDist / maxRangeMeters) * maxRadius;
+        const rad = bearingToCanvasRad(bearingDeg);
+        const px = cx + Math.cos(rad) * radiusPx;
+        const py = cy + Math.sin(rad) * radiusPx;
+
+        const hitDist = Math.hypot(clickX - px, clickY - py);
+        if (hitDist <= 26) {
+          onRemovePing(ping.id);
+          return;
+        }
+      }
+    }
+
+    if (!activePingTool) return;
 
     const distanceMeters = Math.max(
       1,

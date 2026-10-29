@@ -8,17 +8,21 @@ import {
   Shield,
   Compass,
   Map as MapIcon,
+  Trash2,
+  X,
 } from 'lucide-react';
 import {
   ENVIRONMENT_CONFIG,
   EnvironmentPreset,
   PingType,
   PlayerStatus,
+  TacticalPing,
 } from '../types/radar';
 
 interface TacticalControlsProps {
   status: PlayerStatus;
   activePingTool: PingType | null;
+  pings: TacticalPing[];
   environment: EnvironmentPreset;
   maxRangeMeters: number;
   headUpMode: boolean;
@@ -29,6 +33,8 @@ interface TacticalControlsProps {
   onStatusChange: (status: PlayerStatus) => void;
   onSelectPingTool: (type: PingType | null) => void;
   onQuickPingAhead: (type: PingType) => void;
+  onRemovePing: (pingId: string) => void;
+  onClearAllPings: () => void;
   onEnvironmentChange: (env: EnvironmentPreset) => void;
   onRangeChange: (meters: number) => void;
   onToggleHeadUp: () => void;
@@ -41,6 +47,7 @@ interface TacticalControlsProps {
 export const TacticalControls: React.FC<TacticalControlsProps> = ({
   status,
   activePingTool,
+  pings,
   environment,
   maxRangeMeters,
   headUpMode,
@@ -51,6 +58,8 @@ export const TacticalControls: React.FC<TacticalControlsProps> = ({
   onStatusChange,
   onSelectPingTool,
   onQuickPingAhead,
+  onRemovePing,
+  onClearAllPings,
   onEnvironmentChange,
   onRangeChange,
   onToggleHeadUp,
@@ -161,6 +170,34 @@ export const TacticalControls: React.FC<TacticalControlsProps> = ({
             <span className="truncate">OBJ</span>
           </button>
         </div>
+
+        {/* Active Pings List & Clear Button */}
+        {pings.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1.5 bg-black/50 border border-red-500/25 rounded-lg p-1.5">
+            <div className="flex flex-wrap items-center gap-1">
+              {pings.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => onRemovePing(p.id)}
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-950/70 hover:bg-red-900 border border-red-500/40 text-red-200 font-mono text-[10px] cursor-pointer"
+                  title="Tap to remove this ping"
+                >
+                  <span>
+                    {p.type} ({p.distanceMeters}m)
+                  </span>
+                  <X className="w-3 h-3 text-red-400" />
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={onClearAllPings}
+              className="flex items-center gap-1 px-2 py-0.5 rounded bg-red-600/80 hover:bg-red-500 text-white font-mono text-[10px] font-bold cursor-pointer shrink-0"
+            >
+              <Trash2 className="w-3 h-3" />
+              <span>CLEAR ALL</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Row 3: Environment Preset */}

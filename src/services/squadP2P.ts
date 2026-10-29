@@ -260,6 +260,22 @@ export class SquadP2PService {
         }
         break;
       }
+      case 'PING_REMOVE': {
+        this.pings.delete(msg.pingId);
+        this.emitPings();
+        if (this.isHost) {
+          void this.relayToClients(msg, fromPeer);
+        }
+        break;
+      }
+      case 'PINGS_CLEAR': {
+        this.pings.clear();
+        this.emitPings();
+        if (this.isHost) {
+          void this.relayToClients(msg, fromPeer);
+        }
+        break;
+      }
       case 'WHITELIST_ADD': {
         this.whitelist.set(msg.entry.deviceId, msg.entry);
         this.emitWhitelist();
@@ -301,6 +317,23 @@ export class SquadP2PService {
     void this.sendMessage({
       type: 'TACTICAL_PING',
       ping,
+    });
+  }
+
+  public removeTacticalPing(pingId: string) {
+    this.pings.delete(pingId);
+    this.emitPings();
+    void this.sendMessage({
+      type: 'PING_REMOVE',
+      pingId,
+    });
+  }
+
+  public clearAllPings() {
+    this.pings.clear();
+    this.emitPings();
+    void this.sendMessage({
+      type: 'PINGS_CLEAR',
     });
   }
 
