@@ -508,7 +508,7 @@ export const App: React.FC = () => {
               </div>
             )}
 
-            {/* Quick 1-Tap BLE Sweep Toggle */}
+            {/* Quick 1-Tap BLE Sweep Toggle + Simulator Toggle */}
             <button
               onClick={isScanning ? handleStopScan : handleStartPassiveScan}
               className={`px-2.5 py-1.5 rounded-xl font-mono text-[11px] font-bold border flex items-center gap-1 shrink-0 cursor-pointer ${
@@ -521,6 +521,18 @@ export const App: React.FC = () => {
                 className={`w-3.5 h-3.5 ${isScanning ? 'animate-ping' : ''}`}
               />
               <span>{isScanning ? 'LIVE' : 'SCAN'}</span>
+            </button>
+
+            <button
+              onClick={() => handleToggleSimulation(!simEnabled)}
+              className={`px-2.5 py-1.5 rounded-xl font-mono text-[11px] font-bold border shrink-0 cursor-pointer transition ${
+                simEnabled
+                  ? 'bg-amber-500/25 border-amber-400 text-amber-200'
+                  : 'bg-black/50 border-emerald-500/30 text-emerald-300/75 hover:text-emerald-200'
+              }`}
+              title="Toggle Field Signal Simulator On/Off"
+            >
+              {simEnabled ? 'SIM: ON' : 'SIM: OFF'}
             </button>
           </div>
 
