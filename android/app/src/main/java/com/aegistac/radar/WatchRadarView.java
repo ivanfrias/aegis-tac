@@ -49,14 +49,27 @@ import java.util.Set;
 
 /**
  * 100% Native Android / Wear OS Circular Tactical Radar View.
- * Runs directly on Samsung Galaxy Watch 4/5/6/7 (Wear OS) with ZERO WebView dependency.
+ * Includes:
+ * - Display Filter Mode: TOP_5 (closest 5 first), ALL, NONE (scanner off)
+ * - Zoom In (+) and Zoom Out (-) buttons (5m, 10m, 20m, 35m, 50m, 75m, 120m) + Rotary Bezel Scroll
+ * - Anti-overlap label de-cluttering for swarmed environments
+ * - Dedicated QUIT button to cleanly exit the app on the smartwatch
  */
 public class WatchRadarView extends View implements SensorEventListener {
 
     public interface PermissionRequester {
         boolean hasAllBlePermissions();
         void requestBlePermissions();
+        void quitWatchApp();
     }
+
+    public enum FilterMode {
+        TOP_5,
+        ALL,
+        NONE
+    }
+
+    private static final int[] ZOOM_SCALES = {5, 10, 20, 35, 50, 75, 120};
 
     private static class BleContact {
         String id;
@@ -67,7 +80,7 @@ public class WatchRadarView extends View implements SensorEventListener {
         double txPower = -69.0;
         double distanceMeters;
         float bearingDeg;
-        float arcSpreadDeg = 75f;
+        float arcSpreadDeg = 65f;
         int peakRssi = -100;
         int trend = 0; // 1 = closing, -1 = receding, 0 = stable
         long lastSeen;
@@ -98,10 +111,15 @@ public class WatchRadarView extends View implements SensorEventListener {
     private boolean simEnabled = false;
     private boolean headUpMode = true;
     private boolean enemyPingArmed = false;
-    private int maxRangeMeters = 40;
+
+    // Default to TOP_5 so swarmed environments stay clean and readable
+    private FilterMode filterMode = FilterMode.TOP_5;
+    private int zoomIndex = 2; // 20m default on watch (ZOOM_SCALES[2] = 20m)
+    private int maxRangeMeters = ZOOM_SCALES[zoomIndex];
+
     private float headingDeg = 0f;
     private float sweepAngleRad = 0f;
-    private String statusBanner = "TAP SCAN TO SWEEP";
+    private String statusBanner = "MODE: CLOSEST 5";
 
     // Sensors
     private final SensorManager sensorManager;
@@ -115,19 +133,23 @@ public class WatchRadarView extends View implements SensorEventListener {
     private final Vibrator vibrator;
 
     // Touch Hit Regions
+    private final RectF zoomOutBtnRect = new RectF();
     private final RectF topPillRect = new RectF();
+    private final RectF zoomInBtnRect = new RectF();
     private final RectF statusBannerRect = new RectF();
-    private final RectF scanBtnRect = new RectF();
+    private final RectF filterBtnRect = new RectF();
     private final RectF simBtnRect = new RectF();
     private final RectF pingBtnRect = new RectF();
     private final RectF allyBtnRect = new RectF();
     private final RectF bottomModeRect = new RectF();
     private final RectF bottomClrRect = new RectF();
+    private final RectF quitBtnRect = new RectF();
 
     // Paints
     private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint gridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint labelBgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint arcGlowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint arcCorePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -143,7 +165,7 @@ public class WatchRadarView extends View implements SensorEventListener {
         @Override
         @SuppressLint("MissingPermission")
         public void onReceive(Context context, Intent intent) {
-            if (intent == null) return;
+            if (intent == null || filterMode == FilterMode.NONE) return;
             String action = intent.getAction();
             if (BluetoothDevice.ACTION_FOUND.equals(action)) {
                 BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
@@ -168,6 +190,9 @@ public class WatchRadarView extends View implements SensorEventListener {
         super(context);
         this.permissionRequester = requester;
         setKeepScreenOn(true);
+        setFocusable(true);
+        setFocusableInTouchMode(true);
+        requestFocus();
 
         btManager = (BluetoothManager) context.getSystemService(Context.BLUETOOTH_SERVICE);
         if (btManager != null) {
@@ -182,6 +207,8 @@ public class WatchRadarView extends View implements SensorEventListener {
 
         gridPaint.setStyle(Paint.Style.STROKE);
         textPaint.setTypeface(Typeface.MONOSPACE);
+        labelBgPaint.setStyle(Paint.Style.FILL);
+        labelBgPaint.setColor(Color.argb(195, 3, 9, 6));
         arcGlowPaint.setStyle(Paint.Style.STROKE);
         arcGlowPaint.setStrokeCap(Paint.Cap.ROUND);
         arcCorePaint.setStyle(Paint.Style.STROKE);
@@ -192,6 +219,53 @@ public class WatchRadarView extends View implements SensorEventListener {
     public void setStatusBanner(String msg) {
         this.statusBanner = msg;
         postInvalidate();
+    }
+
+    private void updateStatusSummary() {
+        if (filterMode == FilterMode.NONE) {
+            statusBanner = "SCANNER OFF (NONE)";
+            return;
+        }
+        int total = contacts.size();
+        if (filterMode == FilterMode.TOP_5) {
+            int shown = Math.min(5, total);
+            statusBanner = "TOP " + shown + "/" + total + " SHOWN";
+        } else {
+            statusBanner = "ALL " + total + " SHOWN";
+        }
+    }
+
+    private void zoomIn() {
+        if (zoomIndex > 0) {
+            zoomIndex--;
+            maxRangeMeters = ZOOM_SCALES[zoomIndex];
+            statusBanner = "ZOOM IN: " + maxRangeMeters + "m";
+            vibrateWatch(40);
+        }
+    }
+
+    private void zoomOut() {
+        if (zoomIndex < ZOOM_SCALES.length - 1) {
+            zoomIndex++;
+            maxRangeMeters = ZOOM_SCALES[zoomIndex];
+            statusBanner = "ZOOM OUT: " + maxRangeMeters + "m";
+            vibrateWatch(40);
+        }
+    }
+
+    private void cycleFilterMode() {
+        if (filterMode == FilterMode.TOP_5) {
+            filterMode = FilterMode.ALL;
+            if (!isScanning) startBleScan();
+        } else if (filterMode == FilterMode.ALL) {
+            filterMode = FilterMode.NONE;
+            stopBleScan();
+        } else {
+            filterMode = FilterMode.TOP_5;
+            startBleScan();
+        }
+        updateStatusSummary();
+        vibrateWatch(55);
     }
 
     private boolean isLocationServiceEnabled() {
@@ -260,6 +334,10 @@ public class WatchRadarView extends View implements SensorEventListener {
 
     @SuppressLint("MissingPermission")
     public void startBleScan() {
+        if (filterMode == FilterMode.NONE) {
+            filterMode = FilterMode.TOP_5;
+        }
+
         if (permissionRequester != null && !permissionRequester.hasAllBlePermissions()) {
             statusBanner = "TAP TO ALLOW BT & LOC";
             permissionRequester.requestBlePermissions();
@@ -278,7 +356,6 @@ public class WatchRadarView extends View implements SensorEventListener {
         }
 
         try {
-            // 1. Seed any currently connected GATT devices (e.g., paired phone)
             if (btManager != null) {
                 List<BluetoothDevice> connected = btManager.getConnectedDevices(BluetoothProfile.GATT);
                 if (connected != null) {
@@ -298,7 +375,6 @@ public class WatchRadarView extends View implements SensorEventListener {
                 }
             }
 
-            // 2. Start BLE Low-Latency Scanner
             bleScanner = bluetoothAdapter.getBluetoothLeScanner();
             if (bleScanner != null) {
                 try {
@@ -312,7 +388,6 @@ public class WatchRadarView extends View implements SensorEventListener {
                 bleScanner.startScan(null, settings, scanCallback);
             }
 
-            // 3. Also kick off Classic / Dual-Mode Bluetooth discovery so non-BLE phones/headsets show up too
             try {
                 if (!bluetoothAdapter.isDiscovering()) {
                     bluetoothAdapter.startDiscovery();
@@ -323,7 +398,7 @@ public class WatchRadarView extends View implements SensorEventListener {
 
             isScanning = true;
             if (isLocationServiceEnabled()) {
-                statusBanner = "SWEEPING RF (" + contacts.size() + " SIG)";
+                updateStatusSummary();
             }
             vibrateWatch(60);
         } catch (SecurityException se) {
@@ -351,18 +426,20 @@ public class WatchRadarView extends View implements SensorEventListener {
         } catch (Exception ignored) {
         }
         isScanning = false;
-        statusBanner = "SWEEP PAUSED";
+        statusBanner = "SCANNER OFF (NONE)";
     }
 
     private final ScanCallback scanCallback = new ScanCallback() {
         @Override
         public void onScanResult(int callbackType, ScanResult result) {
-            processScanResult(result);
+            if (filterMode != FilterMode.NONE) {
+                processScanResult(result);
+            }
         }
 
         @Override
         public void onBatchScanResults(List<ScanResult> results) {
-            if (results == null) return;
+            if (results == null || filterMode == FilterMode.NONE) return;
             for (ScanResult r : results) {
                 processScanResult(r);
             }
@@ -465,15 +542,16 @@ public class WatchRadarView extends View implements SensorEventListener {
             c.rawRssi = rssi;
             c.smoothedRssi = rssi;
             c.distanceMeters = rssiToDistance(rssi, c.txPower);
-            c.bearingDeg = (headingDeg + (Math.abs(id.hashCode()) % 50) - 25 + 360f) % 360f;
-            c.arcSpreadDeg = 75f;
+            // Spread initial unknown bearings around a 120° forward sector so swarmed nodes don't stack on 1 pixel
+            c.bearingDeg = (headingDeg + (Math.abs(id.hashCode()) % 120) - 60 + 360f) % 360f;
+            c.arcSpreadDeg = 55f;
             c.peakRssi = rssi;
             c.lastSeen = now;
             c.isFriendly = isFriendly;
             c.simulated = simulated;
             contacts.put(id, c);
             if (isScanning) {
-                statusBanner = "SWEEPING (" + contacts.size() + " DEVICES)";
+                updateStatusSummary();
             }
             return;
         }
@@ -488,10 +566,10 @@ public class WatchRadarView extends View implements SensorEventListener {
             if (rssi >= c.peakRssi - 1) {
                 float diff = angleDiff(headingDeg, c.bearingDeg);
                 c.bearingDeg = (c.bearingDeg + diff * 0.35f + 360f) % 360f;
-                c.arcSpreadDeg = Math.max(38f, c.arcSpreadDeg - 4f);
+                c.arcSpreadDeg = Math.max(32f, c.arcSpreadDeg - 4f);
                 c.peakRssi = Math.max(c.peakRssi, rssi);
             } else {
-                c.arcSpreadDeg = Math.min(92f, c.arcSpreadDeg + 1f);
+                c.arcSpreadDeg = Math.min(75f, c.arcSpreadDeg + 1f);
             }
         }
 
@@ -512,7 +590,7 @@ public class WatchRadarView extends View implements SensorEventListener {
 
     @SuppressLint("MissingPermission")
     private synchronized void tickSimulationAndCleanup(long now) {
-        if (isScanning && bluetoothAdapter != null && now - lastClassicDiscoveryTick > 18000) {
+        if (isScanning && filterMode != FilterMode.NONE && bluetoothAdapter != null && now - lastClassicDiscoveryTick > 18000) {
             lastClassicDiscoveryTick = now;
             try {
                 if (!bluetoothAdapter.isDiscovering()) {
@@ -535,7 +613,7 @@ public class WatchRadarView extends View implements SensorEventListener {
                 BleContact sc = contacts.get(ids[i]);
                 if (sc != null && !sc.isFriendly) {
                     sc.bearingDeg = (baseBearings[i] + (float) Math.sin(now / 4000.0 + i) * 12f + 360f) % 360f;
-                    sc.arcSpreadDeg = 50f;
+                    sc.arcSpreadDeg = 45f;
                 }
             }
         }
@@ -565,6 +643,30 @@ public class WatchRadarView extends View implements SensorEventListener {
         return headUpMode ? (norm + headingDeg) % 360f : norm;
     }
 
+    /**
+     * Retrieves the filtered list of BLE contacts according to FilterMode (TOP_5, ALL, or NONE)
+     */
+    private List<BleContact> getVisibleContacts() {
+        if (filterMode == FilterMode.NONE && !simEnabled) {
+            return Collections.emptyList();
+        }
+        List<BleContact> sorted;
+        synchronized (this) {
+            sorted = new ArrayList<>(contacts.values());
+        }
+        Collections.sort(sorted, new Comparator<BleContact>() {
+            @Override
+            public int compare(BleContact a, BleContact b) {
+                return Double.compare(a.distanceMeters, b.distanceMeters);
+            }
+        });
+
+        if (filterMode == FilterMode.TOP_5 && sorted.size() > 5) {
+            return new ArrayList<>(sorted.subList(0, 5));
+        }
+        return sorted;
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
@@ -576,7 +678,7 @@ public class WatchRadarView extends View implements SensorEventListener {
         float cx = w / 2f;
         float cy = h / 2f;
         float minDim = Math.min(w, h);
-        float outerRadius = minDim * 0.41f;
+        float outerRadius = minDim * 0.40f;
 
         // 1. Deep Tactical Dark Background
         canvas.drawColor(Color.parseColor("#040a06"));
@@ -591,7 +693,7 @@ public class WatchRadarView extends View implements SensorEventListener {
         canvas.drawCircle(cx, cy, outerRadius, bgPaint);
 
         // 2. Range Rings (25%, 50%, 75%, 100%)
-        textPaint.setTextSize(minDim * 0.028f);
+        textPaint.setTextSize(minDim * 0.026f);
         textPaint.setTextAlign(Paint.Align.LEFT);
         for (int i = 1; i <= 4; i++) {
             float r = outerRadius * (i * 0.25f);
@@ -599,9 +701,12 @@ public class WatchRadarView extends View implements SensorEventListener {
             gridPaint.setStrokeWidth(i == 4 ? 2.5f : 1.2f);
             canvas.drawCircle(cx, cy, r, gridPaint);
 
-            int ringMeters = Math.round(maxRangeMeters * (i * 0.25f));
+            float ringMeters = maxRangeMeters * (i * 0.25f);
+            String ringLbl = ringMeters < 10f && (ringMeters % 1f != 0f)
+                    ? String.format(Locale.US, "%.1fm", ringMeters)
+                    : Math.round(ringMeters) + "m";
             textPaint.setColor(Color.argb(150, 110, 231, 183));
-            canvas.drawText(ringMeters + "m", cx + 4f, cy - r + minDim * 0.03f, textPaint);
+            canvas.drawText(ringLbl, cx + 4f, cy - r + minDim * 0.028f, textPaint);
         }
 
         // Crosshairs
@@ -612,13 +717,13 @@ public class WatchRadarView extends View implements SensorEventListener {
 
         // 3. Compass Bezel Ticks & N/E/S/W
         textPaint.setTextAlign(Paint.Align.CENTER);
-        textPaint.setTextSize(minDim * 0.034f);
+        textPaint.setTextSize(minDim * 0.032f);
         textPaint.setFakeBoldText(true);
         for (int deg = 0; deg < 360; deg += 15) {
             float rad = bearingToRad(deg);
             boolean cardinal = (deg % 90 == 0);
             float rIn = outerRadius + (cardinal ? 2f : 4f);
-            float rOut = outerRadius + (cardinal ? 9f : 6f);
+            float rOut = outerRadius + (cardinal ? 8f : 6f);
             gridPaint.setColor(deg == 0 ? Color.parseColor("#f87171") : Color.argb(cardinal ? 200 : 90, 167, 243, 208));
             gridPaint.setStrokeWidth(cardinal ? 2.2f : 1f);
             canvas.drawLine(
@@ -631,75 +736,74 @@ public class WatchRadarView extends View implements SensorEventListener {
             if (cardinal) {
                 String lbl = deg == 0 ? "N" : deg == 90 ? "E" : deg == 180 ? "S" : "W";
                 textPaint.setColor(deg == 0 ? Color.parseColor("#f87171") : Color.parseColor("#a7f3d0"));
-                float lr = outerRadius + minDim * 0.048f;
-                canvas.drawText(lbl, cx + (float) Math.cos(rad) * lr, cy + (float) Math.sin(rad) * lr + minDim * 0.012f, textPaint);
+                float lr = outerRadius + minDim * 0.044f;
+                canvas.drawText(lbl, cx + (float) Math.cos(rad) * lr, cy + (float) Math.sin(rad) * lr + minDim * 0.011f, textPaint);
             }
         }
 
-        // 4. Rotating Radar Sweep Line
-        sweepAngleRad = (float) ((sweepAngleRad + 0.032) % (Math.PI * 2));
-        gridPaint.setColor(Color.argb(190, 52, 211, 153));
-        gridPaint.setStrokeWidth(2f);
-        canvas.drawLine(
-                cx, cy,
-                cx + (float) Math.cos(sweepAngleRad) * outerRadius,
-                cy + (float) Math.sin(sweepAngleRad) * outerRadius,
-                gridPaint
-        );
-
-        // 5. Render BLE Contacts (Sorted closest first)
-        List<BleContact> sorted;
-        synchronized (this) {
-            sorted = new ArrayList<>(contacts.values());
+        // 4. Rotating Radar Sweep Line (only sweeps when not NONE)
+        if (filterMode != FilterMode.NONE || simEnabled) {
+            sweepAngleRad = (float) ((sweepAngleRad + 0.032) % (Math.PI * 2));
+            gridPaint.setColor(Color.argb(190, 52, 211, 153));
+            gridPaint.setStrokeWidth(2f);
+            canvas.drawLine(
+                    cx, cy,
+                    cx + (float) Math.cos(sweepAngleRad) * outerRadius,
+                    cy + (float) Math.sin(sweepAngleRad) * outerRadius,
+                    gridPaint
+            );
         }
-        Collections.sort(sorted, new Comparator<BleContact>() {
-            @Override
-            public int compare(BleContact a, BleContact b) {
-                return Double.compare(a.distanceMeters, b.distanceMeters);
-            }
-        });
 
+        // 5. Render Filtered BLE Contacts with Anti-Overlap Label De-Cluttering
+        List<BleContact> visible = getVisibleContacts();
+        List<RectF> occupiedLabels = new ArrayList<>();
         BleContact closestBogey = null;
-        for (BleContact c : sorted) {
+
+        for (int idx = 0; idx < visible.size(); idx++) {
+            BleContact c = visible.get(idx);
             if (!c.isFriendly && closestBogey == null) {
                 closestBogey = c;
             }
             float clamped = (float) Math.min(maxRangeMeters, c.distanceMeters);
-            float rPx = Math.max(minDim * 0.045f, (clamped / maxRangeMeters) * outerRadius);
+            float rPx = Math.max(minDim * 0.048f, (clamped / maxRangeMeters) * outerRadius);
             float cRad = bearingToRad(c.bearingDeg);
             float bx = cx + (float) Math.cos(cRad) * rPx;
             float by = cy + (float) Math.sin(cRad) * rPx;
             c.lastScreenX = bx;
             c.lastScreenY = by;
 
+            // Keep arcs compact when many contacts are visible
+            float effectiveSpread = visible.size() > 5 ? Math.min(36f, c.arcSpreadDeg) : Math.min(52f, c.arcSpreadDeg);
+
             if (!c.isFriendly) {
-                boolean danger = c.distanceMeters <= 12.0;
+                boolean danger = c.distanceMeters <= 10.0;
                 int color = danger ? Color.parseColor("#ef4444") : Color.parseColor("#f59e0b");
-                arcGlowPaint.setColor(Color.argb(65, Color.red(color), Color.green(color), Color.blue(color)));
-                arcGlowPaint.setStrokeWidth(minDim * 0.032f);
+                arcGlowPaint.setColor(Color.argb(55, Color.red(color), Color.green(color), Color.blue(color)));
+                arcGlowPaint.setStrokeWidth(minDim * 0.024f);
                 arcCorePaint.setColor(color);
-                arcCorePaint.setStrokeWidth(minDim * 0.01f);
+                arcCorePaint.setStrokeWidth(minDim * 0.009f);
 
                 RectF arcRect = new RectF(cx - rPx, cy - rPx, cx + rPx, cy + rPx);
-                float startDeg = (float) Math.toDegrees(cRad) - c.arcSpreadDeg / 2f;
-                canvas.drawArc(arcRect, startDeg, c.arcSpreadDeg, false, arcGlowPaint);
-                canvas.drawArc(arcRect, startDeg, c.arcSpreadDeg, false, arcCorePaint);
+                float startDeg = (float) Math.toDegrees(cRad) - effectiveSpread / 2f;
+                canvas.drawArc(arcRect, startDeg, effectiveSpread, false, arcGlowPaint);
+                canvas.drawArc(arcRect, startDeg, effectiveSpread, false, arcCorePaint);
 
                 fillPaint.setColor(color);
                 canvas.drawCircle(bx, by, minDim * 0.015f, fillPaint);
 
-                textPaint.setColor(color);
-                textPaint.setTextSize(minDim * 0.028f);
-                String arrow = c.trend > 0 ? "▲" : c.trend < 0 ? "▼" : "•";
-                String caption = arrow + c.distanceMeters + "m " + (c.name.length() > 9 ? c.name.substring(0, 9) : c.name);
-                canvas.drawText(caption, bx, by - minDim * 0.025f, textPaint);
+                // In swarmed mode (>6 visible), only draw text labels on the 6 closest nodes to avoid screen clutter
+                if (idx < 6) {
+                    String arrow = c.trend > 0 ? "▲" : c.trend < 0 ? "▼" : "";
+                    String shortNm = c.name.length() > 8 ? c.name.substring(0, 8) : c.name;
+                    String caption = arrow + c.distanceMeters + "m " + shortNm;
+                    drawDeoverlappedLabel(canvas, caption, bx, by - minDim * 0.025f, color, minDim * 0.026f, occupiedLabels);
+                }
             } else {
-                // Friendly Cyan Ally Diamond
                 fillPaint.setColor(Color.parseColor("#06b6d4"));
                 canvas.drawCircle(bx, by, minDim * 0.018f, fillPaint);
-                textPaint.setColor(Color.parseColor("#67e8f9"));
-                textPaint.setTextSize(minDim * 0.028f);
-                canvas.drawText("◆" + (c.name.length() > 8 ? c.name.substring(0, 8) : c.name) + " " + c.distanceMeters + "m", bx, by - minDim * 0.025f, textPaint);
+                String shortNm = c.name.length() > 7 ? c.name.substring(0, 7) : c.name;
+                String caption = "◆" + shortNm + " " + c.distanceMeters + "m";
+                drawDeoverlappedLabel(canvas, caption, bx, by - minDim * 0.025f, Color.parseColor("#67e8f9"), minDim * 0.026f, occupiedLabels);
             }
         }
 
@@ -714,7 +818,7 @@ public class WatchRadarView extends View implements SensorEventListener {
             p.lastScreenY = py;
 
             fillPaint.setColor(Color.parseColor("#ef4444"));
-            float sz = minDim * 0.025f;
+            float sz = minDim * 0.024f;
             Path tri = new Path();
             tri.moveTo(px, py - sz);
             tri.lineTo(px + sz, py + sz);
@@ -723,108 +827,193 @@ public class WatchRadarView extends View implements SensorEventListener {
             canvas.drawPath(tri, fillPaint);
 
             textPaint.setColor(Color.WHITE);
-            textPaint.setTextSize(minDim * 0.026f);
-            canvas.drawText("!ENM " + Math.round(p.distanceMeters) + "m", px, py + sz + minDim * 0.032f, textPaint);
+            textPaint.setTextSize(minDim * 0.025f);
+            canvas.drawText("!ENM " + Math.round(p.distanceMeters) + "m", px, py + sz + minDim * 0.03f, textPaint);
         }
 
-        // 7. Center Self Operator Chevron
+        // 7. Center Self Operator Dot
         fillPaint.setColor(Color.parseColor("#10b981"));
         canvas.drawCircle(cx, cy, minDim * 0.018f, fillPaint);
 
         // ===================================================================
-        // 8. Circular Bezel Touch Buttons (Glove-friendly on Galaxy Watch 5)
+        // 8. Circular Bezel Touch Controls (Zoom -/+, Filter TOP 5/ALL/NONE, Quit)
         // ===================================================================
-        float btnH = minDim * 0.095f;
+        float btnH = minDim * 0.092f;
+        float topY = minDim * 0.022f;
+        float topPillH = btnH * 0.86f;
 
-        // TOP 12 O'CLOCK PILL (Threat / Range Scale Cycler)
-        float topW = minDim * 0.56f;
-        topPillRect.set(cx - topW / 2f, minDim * 0.022f, cx + topW / 2f, minDim * 0.022f + btnH * 0.85f);
+        // TOP 12 O'CLOCK ROW: [-] [ RANGE / BOGEY ] [+]
+        float topCenterW = minDim * 0.38f;
+        float zoomBtnW = minDim * 0.11f;
+
+        topPillRect.set(cx - topCenterW / 2f, topY, cx + topCenterW / 2f, topY + topPillH);
+        zoomOutBtnRect.set(topPillRect.left - zoomBtnW - 4f, topY, topPillRect.left - 4f, topY + topPillH);
+        zoomInBtnRect.set(topPillRect.right + 4f, topY, topPillRect.right + zoomBtnW + 4f, topY + topPillH);
+
+        drawBezelPill(
+                canvas,
+                zoomOutBtnRect,
+                Color.argb(225, 10, 32, 20),
+                Color.parseColor("#6ee7b7"),
+                "-",
+                minDim * 0.042f
+        );
+
         boolean alert = closestBogey != null && closestBogey.distanceMeters <= 12.0;
         drawBezelPill(
                 canvas,
                 topPillRect,
-                alert ? Color.argb(230, 127, 29, 29) : Color.argb(215, 7, 24, 15),
+                alert ? Color.argb(235, 127, 29, 29) : Color.argb(220, 7, 24, 15),
                 alert ? Color.parseColor("#f87171") : Color.parseColor("#34d399"),
                 closestBogey != null
-                        ? String.format(Locale.US, "BOGEY %.1fm • %dm", closestBogey.distanceMeters, maxRangeMeters)
-                        : String.format(Locale.US, "⌚ %dm • %d°", maxRangeMeters, Math.round(headingDeg)),
-                minDim * 0.030f
+                        ? String.format(Locale.US, "⚠ %.1fm • %dm", closestBogey.distanceMeters, maxRangeMeters)
+                        : String.format(Locale.US, "%dm • %d°", maxRangeMeters, Math.round(headingDeg)),
+                minDim * 0.028f
         );
 
-        // Diagnostics / Status Sub-banner (shows live scan count or permission/location prompt)
-        statusBannerRect.set(cx - minDim * 0.34f, topPillRect.bottom + 2f, cx + minDim * 0.34f, topPillRect.bottom + minDim * 0.055f);
-        textPaint.setTextSize(minDim * 0.025f);
-        textPaint.setTextAlign(Paint.Align.CENTER);
-        boolean isWarn = statusBanner.contains("ALLOW") || statusBanner.contains("TURN ON") || statusBanner.contains("ERR");
-        textPaint.setColor(isWarn ? Color.parseColor("#fbbf24") : Color.argb(200, 167, 243, 208));
-        canvas.drawText(statusBanner, cx, statusBannerRect.centerY() + minDim * 0.009f, textPaint);
-
-        // LEFT 9 O'CLOCK: SCAN & SIM
-        float sideW = minDim * 0.20f;
-        scanBtnRect.set(minDim * 0.02f, cy - btnH - 4f, minDim * 0.02f + sideW, cy - 4f);
         drawBezelPill(
                 canvas,
-                scanBtnRect,
-                isScanning ? Color.argb(230, 220, 38, 38) : Color.argb(230, 16, 185, 129),
-                Color.WHITE,
-                isScanning ? "LIVE" : "SCAN",
-                minDim * 0.032f
+                zoomInBtnRect,
+                Color.argb(225, 10, 32, 20),
+                Color.parseColor("#6ee7b7"),
+                "+",
+                minDim * 0.040f
         );
 
-        simBtnRect.set(minDim * 0.02f, cy + 4f, minDim * 0.02f + sideW, cy + btnH + 4f);
+        // Diagnostics / Filter Status Sub-banner
+        statusBannerRect.set(cx - minDim * 0.34f, topPillRect.bottom + 2f, cx + minDim * 0.34f, topPillRect.bottom + minDim * 0.052f);
+        textPaint.setTextSize(minDim * 0.024f);
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        boolean isWarn = statusBanner.contains("ALLOW") || statusBanner.contains("TURN ON") || statusBanner.contains("ERR");
+        textPaint.setColor(isWarn ? Color.parseColor("#fbbf24") : Color.argb(210, 167, 243, 208));
+        canvas.drawText(statusBanner, cx, statusBannerRect.centerY() + minDim * 0.008f, textPaint);
+
+        // LEFT 9 O'CLOCK: FILTER CYCLER (TOP 5 / ALL / NONE) & SIM
+        float sideW = minDim * 0.21f;
+        filterBtnRect.set(minDim * 0.018f, cy - btnH - 4f, minDim * 0.018f + sideW, cy - 4f);
+        String filterLabel = filterMode == FilterMode.TOP_5 ? "TOP 5" : filterMode == FilterMode.ALL ? "ALL" : "NONE";
+        int filterBg = filterMode == FilterMode.TOP_5
+                ? Color.argb(230, 8, 145, 178)
+                : filterMode == FilterMode.ALL
+                ? Color.argb(230, 16, 185, 129)
+                : Color.argb(220, 63, 63, 70);
+        drawBezelPill(
+                canvas,
+                filterBtnRect,
+                filterBg,
+                Color.WHITE,
+                filterLabel,
+                minDim * 0.029f
+        );
+
+        simBtnRect.set(minDim * 0.018f, cy + 4f, minDim * 0.018f + sideW, cy + btnH + 4f);
         drawBezelPill(
                 canvas,
                 simBtnRect,
                 simEnabled ? Color.argb(230, 245, 158, 11) : Color.argb(200, 10, 25, 18),
                 simEnabled ? Color.WHITE : Color.parseColor("#6ee7b7"),
                 simEnabled ? "SIM ON" : "SIM",
-                minDim * 0.029f
+                minDim * 0.028f
         );
 
         // RIGHT 3 O'CLOCK: ! ENM PING & +ALLY WHITELIST
-        pingBtnRect.set(w - minDim * 0.02f - sideW, cy - btnH - 4f, w - minDim * 0.02f, cy - 4f);
+        pingBtnRect.set(w - minDim * 0.018f - sideW, cy - btnH - 4f, w - minDim * 0.018f, cy - 4f);
         drawBezelPill(
                 canvas,
                 pingBtnRect,
                 enemyPingArmed ? Color.parseColor("#ef4444") : Color.argb(220, 127, 29, 29),
                 Color.parseColor("#fecaca"),
                 enemyPingArmed ? "TAP!" : "!ENM",
-                minDim * 0.031f
+                minDim * 0.029f
         );
 
-        allyBtnRect.set(w - minDim * 0.02f - sideW, cy + 4f, w - minDim * 0.02f, cy + btnH + 4f);
+        allyBtnRect.set(w - minDim * 0.018f - sideW, cy + 4f, w - minDim * 0.018f, cy + btnH + 4f);
         drawBezelPill(
                 canvas,
                 allyBtnRect,
                 Color.argb(215, 8, 51, 68),
                 Color.parseColor("#67e8f9"),
                 "+ALLY",
-                minDim * 0.030f
+                minDim * 0.028f
         );
 
-        // BOTTOM 6 O'CLOCK: HEAD-UP/NORTH-UP & CLEAR
-        float botW = minDim * 0.24f;
-        bottomModeRect.set(cx - botW - 4f, h - minDim * 0.025f - btnH * 0.85f, cx - 4f, h - minDim * 0.025f);
+        // BOTTOM 6 O'CLOCK ROW: [HD-UP] [CLR] [QUIT]
+        float botBtnW = minDim * 0.18f;
+        float botY = h - minDim * 0.024f - topPillH;
+        bottomModeRect.set(cx - botBtnW * 1.5f - 6f, botY, cx - botBtnW * 0.5f - 6f, botY + topPillH);
+        bottomClrRect.set(cx - botBtnW * 0.5f, botY, cx + botBtnW * 0.5f, botY + topPillH);
+        quitBtnRect.set(cx + botBtnW * 0.5f + 6f, botY, cx + botBtnW * 1.5f + 6f, botY + topPillH);
+
         drawBezelPill(
                 canvas,
                 bottomModeRect,
                 Color.argb(215, 7, 24, 15),
                 Color.parseColor("#6ee7b7"),
                 headUpMode ? "HD-UP" : "N-UP",
-                minDim * 0.029f
+                minDim * 0.026f
         );
 
-        bottomClrRect.set(cx + 4f, h - minDim * 0.025f - btnH * 0.85f, cx + botW + 4f, h - minDim * 0.025f);
         drawBezelPill(
                 canvas,
                 bottomClrRect,
-                Color.argb(215, 69, 10, 10),
-                Color.parseColor("#fca5a5"),
-                "CLEAR",
-                minDim * 0.029f
+                Color.argb(215, 39, 39, 42),
+                Color.parseColor("#e4e4e7"),
+                "CLR",
+                minDim * 0.026f
+        );
+
+        drawBezelPill(
+                canvas,
+                quitBtnRect,
+                Color.argb(235, 153, 27, 27),
+                Color.parseColor("#fecaca"),
+                "QUIT",
+                minDim * 0.026f
         );
 
         postInvalidateOnAnimation();
+    }
+
+    private void drawDeoverlappedLabel(
+            Canvas canvas,
+            String text,
+            float x,
+            float baseY,
+            int textColor,
+            float textSize,
+            List<RectF> occupied
+    ) {
+        textPaint.setTextSize(textSize);
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        float tw = textPaint.measureText(text);
+        float th = textSize * 1.25f;
+
+        float candidateY = baseY;
+        float[] offsets = {0f, -th * 1.1f, th * 1.8f, -th * 2.2f, th * 2.9f};
+        RectF box = new RectF();
+
+        for (float dy : offsets) {
+            float cy = baseY + dy;
+            box.set(x - tw / 2f - 4f, cy - th, x + tw / 2f + 4f, cy + 4f);
+            boolean collision = false;
+            for (RectF prev : occupied) {
+                if (RectF.intersects(box, prev)) {
+                    collision = true;
+                    break;
+                }
+            }
+            if (!collision) {
+                candidateY = cy;
+                break;
+            }
+        }
+
+        box.set(x - tw / 2f - 4f, candidateY - th + 2f, x + tw / 2f + 4f, candidateY + 4f);
+        occupied.add(new RectF(box));
+
+        canvas.drawRoundRect(box, 6f, 6f, labelBgPaint);
+        textPaint.setColor(textColor);
+        canvas.drawText(text, x, candidateY, textPaint);
     }
 
     private void drawBezelPill(Canvas canvas, RectF rect, int bgColor, int strokeAndTextColor, String label, float textSize) {
@@ -844,12 +1033,57 @@ public class WatchRadarView extends View implements SensorEventListener {
     }
 
     @Override
+    public boolean onGenericMotionEvent(MotionEvent event) {
+        // Support Galaxy Watch 5 Touch Bezel / Rotary Scroll to Zoom In & Out
+        if (event.getAction() == MotionEvent.ACTION_SCROLL) {
+            float vScroll = event.getAxisValue(MotionEvent.AXIS_SCROLL);
+            if (vScroll == 0f) {
+                vScroll = event.getAxisValue(MotionEvent.AXIS_VSCROLL);
+            }
+            if (vScroll > 0f) {
+                zoomIn();
+                return true;
+            } else if (vScroll < 0f) {
+                zoomOut();
+                return true;
+            }
+        }
+        return super.onGenericMotionEvent(event);
+    }
+
+    @Override
     public boolean onTouchEvent(MotionEvent event) {
         if (event.getAction() != MotionEvent.ACTION_DOWN) {
             return super.onTouchEvent(event);
         }
         float x = event.getX();
         float y = event.getY();
+
+        if (quitBtnRect.contains(x, y)) {
+            vibrateWatch(70);
+            if (permissionRequester != null) {
+                permissionRequester.quitWatchApp();
+            }
+            return true;
+        }
+
+        if (zoomInBtnRect.contains(x, y)) {
+            zoomIn();
+            return true;
+        }
+
+        if (zoomOutBtnRect.contains(x, y)) {
+            zoomOut();
+            return true;
+        }
+
+        if (topPillRect.contains(x, y)) {
+            zoomIndex = (zoomIndex + 1) % ZOOM_SCALES.length;
+            maxRangeMeters = ZOOM_SCALES[zoomIndex];
+            statusBanner = "RANGE: " + maxRangeMeters + "m";
+            vibrateWatch(45);
+            return true;
+        }
 
         if (statusBannerRect.contains(x, y)) {
             if (!isLocationServiceEnabled()) {
@@ -866,18 +1100,8 @@ public class WatchRadarView extends View implements SensorEventListener {
             return true;
         }
 
-        if (topPillRect.contains(x, y)) {
-            if (maxRangeMeters == 20) maxRangeMeters = 40;
-            else if (maxRangeMeters == 40) maxRangeMeters = 75;
-            else if (maxRangeMeters == 75) maxRangeMeters = 120;
-            else maxRangeMeters = 20;
-            vibrateWatch(45);
-            return true;
-        }
-
-        if (scanBtnRect.contains(x, y)) {
-            if (isScanning) stopBleScan();
-            else startBleScan();
+        if (filterBtnRect.contains(x, y)) {
+            cycleFilterMode();
             return true;
         }
 
@@ -891,6 +1115,7 @@ public class WatchRadarView extends View implements SensorEventListener {
                     }
                 }
             }
+            updateStatusSummary();
             vibrateWatch(50);
             return true;
         }
@@ -899,7 +1124,7 @@ public class WatchRadarView extends View implements SensorEventListener {
             if (enemyPingArmed) {
                 TacticalPing p = new TacticalPing();
                 p.bearingDeg = headingDeg;
-                p.distanceMeters = 20;
+                p.distanceMeters = Math.min(20, maxRangeMeters * 0.6);
                 p.label = "ENEMY";
                 pings.add(p);
                 enemyPingArmed = false;
@@ -957,9 +1182,10 @@ public class WatchRadarView extends View implements SensorEventListener {
             }
         }
 
-        // Check if user tapped a BLE contact on the radar to toggle Ally / Bogey
+        // Check if user tapped a visible BLE contact on the radar to toggle Ally / Bogey
+        List<BleContact> visible = getVisibleContacts();
         synchronized (this) {
-            for (BleContact c : contacts.values()) {
+            for (BleContact c : visible) {
                 if (Math.hypot(x - c.lastScreenX, y - c.lastScreenY) <= 34f) {
                     c.isFriendly = !c.isFriendly;
                     if (c.isFriendly) {
@@ -977,7 +1203,7 @@ public class WatchRadarView extends View implements SensorEventListener {
         // If !ENM is armed, tapping anywhere on the radar drops an Enemy ping there
         float cx = getWidth() / 2f;
         float cy = getHeight() / 2f;
-        float outerRadius = Math.min(getWidth(), getHeight()) * 0.41f;
+        float outerRadius = Math.min(getWidth(), getHeight()) * 0.40f;
         float distPx = (float) Math.hypot(x - cx, y - cy);
         if (enemyPingArmed && distPx <= outerRadius * 1.05f) {
             TacticalPing p = new TacticalPing();

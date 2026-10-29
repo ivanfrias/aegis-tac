@@ -513,10 +513,15 @@ export class BleRadarEngine {
     const wl = this.whitelist.get(id);
 
     if (!existing) {
+      let idHash = 0;
+      for (let i = 0; i < id.length; i++) {
+        idHash = (idHash * 31 + id.charCodeAt(i)) | 0;
+      }
+      const sectorOffset = (Math.abs(idHash) % 110) - 55;
       const initialBearing =
         typeof bearingHintDeg === 'number'
           ? bearingHintDeg
-          : this.currentHeadingDeg;
+          : this.currentHeadingDeg + sectorOffset;
 
       const distanceMeters = rssiToDistanceMeters(rssi, txPower, this.environment);
 

@@ -100,8 +100,6 @@ public class MainActivity extends Activity implements WatchRadarView.PermissionR
                 needed.add(Manifest.permission.BLUETOOTH_CONNECT);
             }
         }
-        // IMPORTANT: On Android 12+ (API 31+), ACCESS_COARSE_LOCATION MUST be requested alongside ACCESS_FINE_LOCATION
-        // or the system silently ignores the location permission prompt and blocks all BLE scan results!
         if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             needed.add(Manifest.permission.ACCESS_COARSE_LOCATION);
         }
@@ -113,6 +111,18 @@ public class MainActivity extends Activity implements WatchRadarView.PermissionR
             requestPermissions(needed.toArray(new String[0]), REQ_BLE_PERMS);
         } else if (watchRadarView != null) {
             watchRadarView.startBleScan();
+        }
+    }
+
+    @Override
+    public void quitWatchApp() {
+        if (watchRadarView != null) {
+            watchRadarView.onPauseView();
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            finishAndRemoveTask();
+        } else {
+            finish();
         }
     }
 

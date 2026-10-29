@@ -23,6 +23,9 @@ import {
   X,
   Watch,
   Download,
+  ZoomIn,
+  ZoomOut,
+  Filter,
 } from 'lucide-react';
 import {
   BleContact,
@@ -51,9 +54,11 @@ import { TacticalControls } from './components/TacticalControls';
 import { BleContactsList } from './components/BleContactsList';
 import { SquadPanel } from './components/SquadPanel';
 import { FieldManualModal } from './components/FieldManualModal';
-import { WatchHud } from './components/WatchHud';
+import { BleHudFilterMode, WatchHud } from './components/WatchHud';
 
 export type ScreenMode = 'BASIC' | 'WATCH' | 'ADVANCED';
+
+const RADAR_ZOOM_SCALES = [5, 10, 20, 35, 50, 75, 120];
 
 export const App: React.FC = () => {
   const [screenMode, setScreenMode] = useState<ScreenMode>(() => {
@@ -94,7 +99,9 @@ export const App: React.FC = () => {
 
   // Radar & Environment Settings
   const [environment, setEnvironment] = useState<EnvironmentPreset>('COMPOUND');
-  const [maxRangeMeters, setMaxRangeMeters] = useState<number>(40);
+  const [maxRangeMeters, setMaxRangeMeters] = useState<number>(35);
+  const [bleFilterMode, setBleFilterMode] =
+    useState<BleHudFilterMode>('TOP_5');
   const [headUpMode, setHeadUpMode] = useState<boolean>(true);
   const [showSatellite, setShowSatellite] = useState<boolean>(true);
   const [mapStyle, setMapStyle] = useState<'SATELLITE' | 'TOPO'>('SATELLITE');
@@ -566,7 +573,68 @@ export const App: React.FC = () => {
   };
 
   const bogeyCount = contacts.filter((c) => !c.isFriendly).length;
-  const closestBogey = contacts.find((c) => !c.isFriendly);
+  const hudContacts =
+    bleFilterMode === 'NONE'
+      ? []
+      : bleFilterMode === 'TOP_5'
+      ? contacts.slice(0, 5)
+      : contacts;
+  const closestBogey = hudContacts.find((c) => !c.isFriendly);
+
+  const handleZoomIn = () => {
+    setMaxRangeMeters((prev) => {
+      const idx = RADAR_ZOOM_SCALES.findIndex((s) => s >= prev);
+      const safeIdx = idx === -1 ? RADAR_ZOOM_SCALES.length - 1 : idx;
+      return RADAR_ZOOM_SCALES[Math.max(0, safeIdx - 1)];
+    });
+    playTacticalTone(960, 45);
+  };
+
+  const handleZoomOut = () => {
+    setMaxRangeMeters((prev) => {
+      const idx = RADAR_ZOOM_SCALES.findIndex((s) => s >= prev);
+      const safeIdx = idx === -1 ? RADAR_ZOOM_SCALES.length - 1 : idx;
+      return RADAR_ZOOM_SCALES[
+        Math.min(RADAR_ZOOM_SCALES.length - 1, safeIdx + 1)
+      ];
+    });
+    playTacticalTone(740, 45);
+  };
+
+  const handleCycleRange = () => {
+    setMaxRangeMeters((prev) => {
+      const idx = RADAR_ZOOM_SCALES.indexOf(prev);
+      return RADAR_ZOOM_SCALES[(idx + 1) % RADAR_ZOOM_SCALES.length];
+    });
+    playTacticalTone(840, 45);
+  };
+
+  const handleCycleBleFilter = () => {
+    setBleFilterMode((prev) => {
+      const next: BleHudFilterMode =
+        prev === 'TOP_5' ? 'ALL' : prev === 'ALL' ? 'NONE' : 'TOP_5';
+      if (next === 'NONE') {
+        handleStopScan();
+        if (simEnabled) handleToggleSimulation(false);
+      } else if (prev === 'NONE' && !isScanning) {
+        void handleStartPassiveScan();
+      }
+      return next;
+    });
+    playTacticalTone(880, 55);
+  };
+
+  const handleQuitApp = () => {
+    handleStopScan();
+    if (simEnabled) handleToggleSimulation(false);
+    void p2pRef.current?.disconnect();
+    try {
+      window.close();
+    } catch {
+      // ignore
+    }
+    setScreenMode('BASIC');
+  };
 
   return (
     <div className="min-h-dvh w-full bg-[#050b07] text-emerald-100 flex flex-col select-none">
@@ -694,7 +762,9 @@ export const App: React.FC = () => {
 
       {screenMode === 'WATCH' ? (
         <WatchHud
-          contacts={contacts}
+          contacts={hudContacts}
+          totalDetectedCount={contacts.length}
+          bleFilterMode={bleFilterMode}
           squadMembers={squadMembers}
           selfPeerId={selfPeerId}
           pings={pings}
@@ -712,14 +782,12 @@ export const App: React.FC = () => {
           playerStatus={playerStatus}
           onStartScan={handleStartPassiveScan}
           onStopScan={handleStopScan}
+          onCycleBleFilter={handleCycleBleFilter}
           onToggleSim={() => handleToggleSimulation(!simEnabled)}
           onToggleBleOnly={() => setBleOnlyMode((v) => !v)}
-          onCycleRange={() => {
-            const scales = [20, 40, 75, 120];
-            const next =
-              scales[(scales.indexOf(maxRangeMeters) + 1) % scales.length];
-            setMaxRangeMeters(next);
-          }}
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onCycleRange={handleCycleRange}
           onToggleHeadUp={() => setHeadUpMode((v) => !v)}
           onCycleStatus={() => {
             const order: PlayerStatus[] = ['ACTIVE', 'HIT', 'MEDIC'];
@@ -732,6 +800,7 @@ export const App: React.FC = () => {
           onRemovePing={handleRemovePing}
           onClearAllPings={handleClearAllPings}
           onExitWatchMode={() => setScreenMode('BASIC')}
+          onQuitApp={handleQuitApp}
         />
       ) : screenMode === 'BASIC' ? (
         <main className="flex-1 w-full max-w-md mx-auto px-3 py-2 flex flex-col justify-between gap-2">
@@ -795,7 +864,7 @@ export const App: React.FC = () => {
           <div className="relative flex-1 flex flex-col items-center justify-center min-h-0">
             <div className="w-full max-w-[310px] sm:max-w-[360px] mx-auto">
               <RadarDisplay
-                contacts={contacts}
+                contacts={hudContacts}
                 squadMembers={bleOnlyMode ? [] : squadMembers}
                 selfPeerId={selfPeerId}
                 pings={pings}
@@ -812,8 +881,59 @@ export const App: React.FC = () => {
               />
             </div>
 
-            {/* Quick Corner Pills under Radar (Map, Compass, Range Cycle, BLE Only) */}
+            {/* Quick Corner Pills under Radar (Zoom -/+, Swarmed Filter, Map, Compass, BLE Only) */}
             <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5 text-[10px] font-mono">
+              <div className="flex items-center rounded border border-emerald-400/50 bg-emerald-950/60 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={handleZoomOut}
+                  className="px-2 py-0.5 hover:bg-emerald-500/30 text-emerald-200 font-bold flex items-center gap-0.5 cursor-pointer"
+                  title="Zoom Out (Increase radar range scale)"
+                >
+                  <ZoomOut className="w-3 h-3" />
+                  <span>-</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCycleRange}
+                  className="px-2 py-0.5 bg-emerald-500/20 text-emerald-100 font-extrabold border-x border-emerald-500/30 cursor-pointer"
+                  title="Tap to cycle range scale (5m to 120m)"
+                >
+                  {maxRangeMeters}m
+                </button>
+                <button
+                  type="button"
+                  onClick={handleZoomIn}
+                  className="px-2 py-0.5 hover:bg-emerald-500/30 text-emerald-200 font-bold flex items-center gap-0.5 cursor-pointer"
+                  title="Zoom In (Decrease radar range scale for close quarters)"
+                >
+                  <span>+</span>
+                  <ZoomIn className="w-3 h-3" />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCycleBleFilter}
+                className={`px-2 py-0.5 rounded border flex items-center gap-1 font-bold cursor-pointer transition ${
+                  bleFilterMode === 'TOP_5'
+                    ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200'
+                    : bleFilterMode === 'ALL'
+                    ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200'
+                    : 'bg-zinc-900 border-zinc-600 text-zinc-400'
+                }`}
+                title="Swarmed Environment Filter: Show Closest 5 First (TOP 5) → Show All (ALL) → Show None / Scanner Off (NONE)"
+              >
+                <Filter className="w-3 h-3" />
+                <span>
+                  {bleFilterMode === 'TOP_5'
+                    ? `CLOSEST 5 (${hudContacts.length}/${contacts.length})`
+                    : bleFilterMode === 'ALL'
+                    ? `SHOW ALL (${contacts.length})`
+                    : 'SHOW NONE (OFF)'}
+                </span>
+              </button>
+
               <button
                 onClick={() => setShowSatellite((v) => !v)}
                 className={`px-2 py-0.5 rounded border flex items-center gap-1 cursor-pointer ${
@@ -832,18 +952,6 @@ export const App: React.FC = () => {
               >
                 <Compass className="w-3 h-3" />
                 <span>{headUpMode ? 'HEAD-UP' : 'NORTH-UP'}</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  const scales = [20, 40, 75, 120];
-                  const next =
-                    scales[(scales.indexOf(maxRangeMeters) + 1) % scales.length];
-                  setMaxRangeMeters(next);
-                }}
-                className="px-2 py-0.5 rounded border bg-emerald-500/20 border-emerald-400/50 text-emerald-200 font-bold cursor-pointer"
-              >
-                RANGE: {maxRangeMeters}m
               </button>
 
               <button
@@ -980,7 +1088,7 @@ export const App: React.FC = () => {
           <div className="lg:col-span-5 flex flex-col items-center justify-center w-full">
             <div className="w-full max-w-[230px] sm:max-w-[300px] lg:max-w-[360px] mx-auto">
               <RadarDisplay
-                contacts={contacts}
+                contacts={hudContacts}
                 squadMembers={bleOnlyMode ? [] : squadMembers}
                 selfPeerId={selfPeerId}
                 pings={pings}
@@ -997,7 +1105,53 @@ export const App: React.FC = () => {
               />
             </div>
 
-            <div className="mt-1 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[10px] font-mono text-emerald-300/80">
+            <div className="mt-1 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[10px] font-mono text-emerald-300/80">
+              <div className="flex items-center rounded border border-emerald-400/50 bg-emerald-950/60 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={handleZoomOut}
+                  className="px-1.5 py-0.5 hover:bg-emerald-500/30 text-emerald-200 font-bold cursor-pointer"
+                  title="Zoom Out"
+                >
+                  -
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCycleRange}
+                  className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-100 font-extrabold border-x border-emerald-500/30 cursor-pointer"
+                >
+                  {maxRangeMeters}m
+                </button>
+                <button
+                  type="button"
+                  onClick={handleZoomIn}
+                  className="px-1.5 py-0.5 hover:bg-emerald-500/30 text-emerald-200 font-bold cursor-pointer"
+                  title="Zoom In"
+                >
+                  +
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCycleBleFilter}
+                className={`px-1.5 py-0.5 rounded border flex items-center gap-1 font-bold cursor-pointer transition ${
+                  bleFilterMode === 'TOP_5'
+                    ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200'
+                    : bleFilterMode === 'ALL'
+                    ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200'
+                    : 'bg-zinc-900 border-zinc-600 text-zinc-400'
+                }`}
+              >
+                <Filter className="w-2.5 h-2.5" />
+                <span>
+                  {bleFilterMode === 'TOP_5'
+                    ? `TOP 5 (${hudContacts.length}/${contacts.length})`
+                    : bleFilterMode === 'ALL'
+                    ? `ALL (${contacts.length})`
+                    : 'NONE'}
+                </span>
+              </button>
               <span className="flex items-center gap-1">
                 <span className="w-2 h-1 rounded bg-amber-400 inline-block" />
                 Bogey Arc

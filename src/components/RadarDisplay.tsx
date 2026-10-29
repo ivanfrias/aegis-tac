@@ -202,11 +202,15 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = (props) => {
             ctx.arc(cx, cy, r, 0, Math.PI * 2);
             ctx.stroke();
 
-            const ringMeters = Math.round(p.maxRangeMeters * frac);
+            const rawMeters = p.maxRangeMeters * frac;
+            const ringLabel =
+              rawMeters === Math.floor(rawMeters)
+                ? `${Math.round(rawMeters)}m`
+                : `${rawMeters.toFixed(1)}m`;
             ctx.fillStyle = 'rgba(110, 231, 183, 0.65)';
             ctx.font = '600 10px monospace';
             ctx.textAlign = 'left';
-            ctx.fillText(`${ringMeters}m`, cx + 4, cy - r + 11);
+            ctx.fillText(ringLabel, cx + 4, cy - r + 11);
           }
 
           // 3. Crosshairs & Forward Field-of-View Cone
@@ -321,8 +325,55 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = (props) => {
           ctx.stroke();
           ctx.restore();
 
-          // 6. Render BLE Contacts
+          // 6. Render BLE Contacts (with anti-overlap label placement)
           const pulse = 0.55 + 0.45 * Math.sin(now / 260);
+          const occupiedLabelBoxes: Array<{
+            x1: number;
+            y1: number;
+            x2: number;
+            y2: number;
+          }> = [];
+
+          const drawDeoverlappedTag = (
+            anchorX: number,
+            anchorY: number,
+            text: string,
+            textColor: string
+          ) => {
+            ctx.font = 'bold 10px monospace';
+            const textWidth = ctx.measureText(text).width;
+            const boxW = textWidth + 8;
+            const boxH = 14;
+            const candidateOffsetsY = [-15, 15, -30, 30, -45, 45];
+
+            let chosenX = anchorX;
+            let chosenY = anchorY - 15;
+
+            for (const dy of candidateOffsetsY) {
+              const cyBox = anchorY + dy;
+              const x1 = anchorX - boxW / 2;
+              const y1 = cyBox - boxH / 2;
+              const x2 = anchorX + boxW / 2;
+              const y2 = cyBox + boxH / 2;
+
+              const overlaps = occupiedLabelBoxes.some(
+                (b) => !(x2 < b.x1 || x1 > b.x2 || y2 < b.y1 || y1 > b.y2)
+              );
+              if (!overlaps) {
+                chosenX = anchorX;
+                chosenY = cyBox;
+                occupiedLabelBoxes.push({ x1, y1, x2, y2 });
+                break;
+              }
+            }
+
+            ctx.fillStyle = 'rgba(5, 11, 7, 0.85)';
+            ctx.fillRect(chosenX - boxW / 2, chosenY - boxH / 2, boxW, boxH);
+            ctx.fillStyle = textColor;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, chosenX, chosenY);
+          };
 
           for (const contact of p.contacts) {
             const clampedDist = Math.min(
@@ -390,16 +441,12 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = (props) => {
                   : contact.trend === 'RECEDING'
                   ? '▼'
                   : '•';
-              const tagText = `${trendSymbol} ${contact.distanceMeters}m (${contact.smoothedRssi}dBm)`;
-              ctx.font = 'bold 10px monospace';
-              ctx.fillStyle = 'rgba(5, 11, 7, 0.82)';
-              const textWidth = ctx.measureText(tagText).width;
-              ctx.fillRect(bx - textWidth / 2 - 4, by - 22, textWidth + 8, 14);
-
-              ctx.fillStyle = `rgb(${baseRgb})`;
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              ctx.fillText(tagText, bx, by - 15);
+              const shortLabel =
+                contact.name.length > 9
+                  ? contact.name.slice(0, 9)
+                  : contact.name;
+              const tagText = `${trendSymbol} ${shortLabel} ${contact.distanceMeters}m`;
+              drawDeoverlappedTag(bx, by, tagText, `rgb(${baseRgb})`);
             } else {
               const fx = cx + Math.cos(centerRad) * radiusPx;
               const fy = cy + Math.sin(centerRad) * radiusPx;
@@ -414,13 +461,11 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = (props) => {
               ctx.strokeRect(-5, -5, 10, 10);
               ctx.restore();
 
-              ctx.fillStyle = '#67e8f9';
-              ctx.font = 'bold 10px monospace';
-              ctx.textAlign = 'center';
-              ctx.fillText(
-                `${contact.assignedCallsign || contact.name} (${contact.distanceMeters}m)`,
+              drawDeoverlappedTag(
                 fx,
-                fy - 12
+                fy,
+                `${contact.assignedCallsign || contact.name} (${contact.distanceMeters}m)`,
+                '#67e8f9'
               );
             }
           }

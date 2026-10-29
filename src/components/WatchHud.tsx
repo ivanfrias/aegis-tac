@@ -8,6 +8,10 @@ import {
   Trash2,
   Sliders,
   Bluetooth,
+  ZoomIn,
+  ZoomOut,
+  Power,
+  Filter,
 } from 'lucide-react';
 import {
   BleContact,
@@ -18,8 +22,12 @@ import {
 } from '../types/radar';
 import { RadarDisplay } from './RadarDisplay';
 
+export type BleHudFilterMode = 'TOP_5' | 'ALL' | 'NONE';
+
 interface WatchHudProps {
   contacts: BleContact[];
+  totalDetectedCount: number;
+  bleFilterMode: BleHudFilterMode;
   squadMembers: SquadMember[];
   selfPeerId: string;
   pings: TacticalPing[];
@@ -37,8 +45,11 @@ interface WatchHudProps {
   playerStatus: PlayerStatus;
   onStartScan: () => void;
   onStopScan: () => void;
+  onCycleBleFilter: () => void;
   onToggleSim: () => void;
   onToggleBleOnly: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
   onCycleRange: () => void;
   onToggleHeadUp: () => void;
   onCycleStatus: () => void;
@@ -47,10 +58,13 @@ interface WatchHudProps {
   onRemovePing: (pingId: string) => void;
   onClearAllPings: () => void;
   onExitWatchMode: () => void;
+  onQuitApp: () => void;
 }
 
 export const WatchHud: React.FC<WatchHudProps> = ({
   contacts,
+  totalDetectedCount,
+  bleFilterMode,
   squadMembers,
   selfPeerId,
   pings,
@@ -68,8 +82,11 @@ export const WatchHud: React.FC<WatchHudProps> = ({
   playerStatus,
   onStartScan,
   onStopScan,
+  onCycleBleFilter,
   onToggleSim,
   onToggleBleOnly,
+  onZoomIn,
+  onZoomOut,
   onCycleRange,
   onToggleHeadUp,
   onCycleStatus,
@@ -78,11 +95,18 @@ export const WatchHud: React.FC<WatchHudProps> = ({
   onRemovePing,
   onClearAllPings,
   onExitWatchMode,
+  onQuitApp,
 }) => {
   const closestBogey = contacts.find((c) => !c.isFriendly);
 
   return (
-    <div className="fixed inset-0 z-40 bg-black flex flex-col items-center justify-center overflow-hidden select-none">
+    <div
+      className="fixed inset-0 z-40 bg-black flex flex-col items-center justify-center overflow-hidden select-none"
+      onWheel={(e) => {
+        if (e.deltaY < 0) onZoomIn();
+        else if (e.deltaY > 0) onZoomOut();
+      }}
+    >
       {/* Circular Smartwatch Bezel Frame (Fits 100% edge-to-edge on Galaxy Watch 5, or renders a circular watch dial on Phone/Desktop) */}
       <div className="relative w-[min(100dvw,100dvh,420px)] h-[min(100dvw,100dvh,420px)] rounded-full bg-[#040a06] border-4 border-emerald-500/40 shadow-[0_0_40px_rgba(16,185,129,0.22)] flex items-center justify-center overflow-hidden">
         {/* Full-Bleed 360° Radar Canvas */}
@@ -106,50 +130,90 @@ export const WatchHud: React.FC<WatchHudProps> = ({
         </div>
 
         {/* ===============================================================
-            12 O'CLOCK BEZEL: Threat Alert / Range Scale Pill
+            12 O'CLOCK BEZEL: Zoom Out (-) / Threat & Range Pill / Zoom In (+)
            =============================================================== */}
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1">
+        <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={onZoomOut}
+            className="w-7 h-7 rounded-full bg-[#07150e]/95 border border-emerald-400/60 text-emerald-200 flex items-center justify-center font-mono text-sm font-extrabold shadow-lg cursor-pointer active:scale-95"
+            title="Zoom Out (Increase radar range scale)"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+
           <button
             type="button"
             onClick={onCycleRange}
-            className={`px-3 py-1 rounded-full font-mono text-[10px] font-extrabold border backdrop-blur-md shadow-lg cursor-pointer transition ${
+            className={`px-2.5 py-1 rounded-full font-mono text-[10px] font-extrabold border backdrop-blur-md shadow-lg cursor-pointer transition ${
               closestBogey
                 ? closestBogey.distanceMeters <= 12
                   ? 'bg-red-950/90 border-red-400 text-red-100 animate-pulse'
                   : 'bg-amber-950/90 border-amber-400 text-amber-100'
                 : 'bg-[#07150e]/90 border-emerald-400/50 text-emerald-200'
             }`}
-            title="Tap to cycle radar range scale (20m / 40m / 75m / 120m)"
+            title="Tap to cycle radar range scale (5m / 10m / 20m / 35m / 50m / 75m / 120m)"
           >
             {closestBogey
-              ? `⚠ BOGEY ${closestBogey.distanceMeters}m • ${maxRangeMeters}m`
-              : `⌚ ${maxRangeMeters}m • ${Math.round(headingDeg)}°`}
+              ? `⚠ ${closestBogey.distanceMeters}m • ${maxRangeMeters}m`
+              : `⌚ ${maxRangeMeters}m (${contacts.length}/${totalDetectedCount})`}
+          </button>
+
+          <button
+            type="button"
+            onClick={onZoomIn}
+            className="w-7 h-7 rounded-full bg-[#07150e]/95 border border-emerald-400/60 text-emerald-200 flex items-center justify-center font-mono text-sm font-extrabold shadow-lg cursor-pointer active:scale-95"
+            title="Zoom In (Decrease radar range scale for close quarters)"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
           </button>
         </div>
 
         {/* ===============================================================
-            9 O'CLOCK BEZEL: Passive BLE Scan Toggle
+            9 O'CLOCK BEZEL: Swarmed Node Filter (TOP 5 / ALL / NONE) + SIM
            =============================================================== */}
-        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-1.5">
+        <div className="absolute left-2 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-1.5">
+          <button
+            type="button"
+            onClick={onCycleBleFilter}
+            className={`px-2 py-1.5 rounded-2xl font-mono text-[9px] font-extrabold border backdrop-blur-md flex flex-col items-center justify-center gap-0.5 shadow-lg cursor-pointer ${
+              bleFilterMode === 'TOP_5'
+                ? 'bg-cyan-500/90 border-cyan-200 text-black'
+                : bleFilterMode === 'ALL'
+                ? 'bg-emerald-500/90 border-emerald-200 text-black'
+                : 'bg-zinc-900/90 border-zinc-500 text-zinc-300'
+            }`}
+            title="Cycle Swarmed HUD Filter: Show Closest 5 First (TOP 5) → Show All (ALL) → Show None / Scanner Off (NONE)"
+          >
+            <Filter className="w-3 h-3" />
+            <span>
+              {bleFilterMode === 'TOP_5'
+                ? 'TOP 5'
+                : bleFilterMode === 'ALL'
+                ? 'ALL'
+                : 'NONE'}
+            </span>
+          </button>
+
           <button
             type="button"
             onClick={isScanning ? onStopScan : onStartScan}
-            className={`px-2.5 py-2 rounded-2xl font-mono text-[10px] font-extrabold border backdrop-blur-md flex flex-col items-center justify-center gap-0.5 shadow-lg cursor-pointer ${
+            className={`px-2 py-1 rounded-xl font-mono text-[9px] font-extrabold border backdrop-blur-md flex items-center justify-center gap-1 shadow cursor-pointer ${
               isScanning
                 ? 'bg-red-600/90 border-red-300 text-white'
-                : 'bg-emerald-500/90 border-emerald-200 text-black'
+                : 'bg-emerald-950/90 border-emerald-400/50 text-emerald-200'
             }`}
           >
             <Radio
-              className={`w-3.5 h-3.5 ${isScanning ? 'animate-ping' : ''}`}
+              className={`w-2.5 h-2.5 ${isScanning ? 'animate-ping' : ''}`}
             />
-            <span>{isScanning ? 'LIVE' : 'SCAN'}</span>
+            <span>{isScanning ? 'ON' : 'SCAN'}</span>
           </button>
 
           <button
             type="button"
             onClick={onToggleSim}
-            className={`px-2 py-1 rounded-xl font-mono text-[9px] font-bold border backdrop-blur-md cursor-pointer ${
+            className={`px-2 py-0.5 rounded-xl font-mono text-[8px] font-bold border backdrop-blur-md cursor-pointer ${
               simEnabled
                 ? 'bg-amber-500/85 border-amber-200 text-black'
                 : 'bg-black/75 border-emerald-500/35 text-emerald-300/80'
@@ -162,7 +226,7 @@ export const WatchHud: React.FC<WatchHudProps> = ({
         {/* ===============================================================
             3 O'CLOCK BEZEL: Quick Enemy Ping & Status Cycle
            =============================================================== */}
-        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-1.5">
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-1.5">
           <button
             type="button"
             onClick={onEnemyPingTap}
@@ -201,13 +265,13 @@ export const WatchHud: React.FC<WatchHudProps> = ({
         </div>
 
         {/* ===============================================================
-            6 O'CLOCK BEZEL: BLE-Only / Clear Pings / Exit Watch HUD
+            6 O'CLOCK BEZEL: BLE-Only / Head-Up / Menu / QUIT App
            =============================================================== */}
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5">
+        <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1">
           <button
             type="button"
             onClick={onToggleBleOnly}
-            className={`px-2 py-1 rounded-full font-mono text-[9px] font-bold border backdrop-blur-md flex items-center gap-1 cursor-pointer ${
+            className={`px-2 py-1 rounded-full font-mono text-[9px] font-bold border backdrop-blur-md flex items-center gap-0.5 cursor-pointer ${
               bleOnlyMode
                 ? 'bg-cyan-400 text-black border-cyan-100'
                 : 'bg-black/80 border-cyan-500/40 text-cyan-300'
@@ -239,11 +303,21 @@ export const WatchHud: React.FC<WatchHudProps> = ({
           <button
             type="button"
             onClick={onExitWatchMode}
-            className="px-2.5 py-1 rounded-full font-mono text-[9px] font-bold border bg-emerald-950/90 hover:bg-emerald-900 border-emerald-400/60 text-emerald-200 backdrop-blur-md flex items-center gap-1 cursor-pointer"
+            className="px-2 py-1 rounded-full font-mono text-[9px] font-bold border bg-emerald-950/90 hover:bg-emerald-900 border-emerald-400/60 text-emerald-200 backdrop-blur-md flex items-center gap-0.5 cursor-pointer"
             title="Switch to Phone / Setup Screen"
           >
             <Sliders className="w-2.5 h-2.5" />
-            <span>MENU</span>
+            <span>HUD</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={onQuitApp}
+            className="px-2 py-1 rounded-full font-mono text-[9px] font-extrabold border bg-red-950/95 hover:bg-red-800 border-red-400 text-red-200 backdrop-blur-md flex items-center gap-0.5 cursor-pointer"
+            title="Stop all scanners and Quit AegisTac"
+          >
+            <Power className="w-2.5 h-2.5" />
+            <span>QUIT</span>
           </button>
         </div>
       </div>
