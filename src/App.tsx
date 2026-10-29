@@ -104,6 +104,8 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [simEnabled, setSimEnabled] = useState<boolean>(false);
   const [bleOnlyMode, setBleOnlyMode] = useState<boolean>(false);
+  const [showBleFlagModal, setShowBleFlagModal] = useState<boolean>(false);
+  const [copiedFlag, setCopiedFlag] = useState<boolean>(false);
   const [scanStatusText, setScanStatusText] = useState<string>(
     'Ready. Tap SCAN / BLE SWEEP for live Bluetooth, or SIM: ON to test.'
   );
@@ -307,6 +309,9 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
     if (res.ok) {
       setIsScanning(true);
       playTacticalTone(1040, 80);
+    } else if (res.mode === 'NEEDS_FLAG') {
+      setShowBleFlagModal(true);
+      playTacticalTone(520, 90);
     }
   };
 
@@ -1032,6 +1037,87 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
       )}
       {/* Onboarding & Interactive Button Reference Modal */}
       <FieldManualModal isOpen={showManual} onClose={handleCloseManual} />
+
+      {/* Passive BLE Sweep Setup Modal (shown when requestLEScan flag is disabled) */}
+      {showBleFlagModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3">
+          <div className="w-full max-w-md bg-[#07130d] border border-emerald-400/50 rounded-2xl p-4 flex flex-col gap-3 shadow-2xl font-mono">
+            <div className="flex items-center justify-between border-b border-emerald-500/25 pb-2">
+              <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs">
+                <Radio className="w-4 h-4 text-amber-400" />
+                <span>ENABLE PASSIVE BLE SWEEP (NO PAIRING)</span>
+              </div>
+              <button
+                onClick={() => setShowBleFlagModal(false)}
+                className="p-1 rounded-lg bg-emerald-950/60 text-emerald-300 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-[11px] text-emerald-100/90 leading-relaxed">
+              By default, Chrome disables passive Bluetooth radar sweeping (
+              <code className="text-cyan-300">requestLEScan</code>) until you
+              turn on Chrome&apos;s Experimental Web Platform flag once:
+            </p>
+
+            <div className="bg-black/70 border border-amber-500/40 rounded-xl p-2.5 space-y-2 text-[11px]">
+              <div className="text-amber-300 font-bold">
+                10-Second One-Time Setup (Android &amp; Desktop Chrome):
+              </div>
+              <ol className="list-decimal list-inside space-y-1 text-emerald-100/90">
+                <li>Tap <strong>COPY FLAG URL</strong> below.</li>
+                <li>Paste it into your Chrome address bar and press Enter.</li>
+                <li>
+                  Change <strong>Experimental Web Platform features</strong> to{' '}
+                  <span className="text-emerald-300 font-bold">Enabled</span>{' '}
+                  and tap <strong>Relaunch</strong>.
+                </li>
+              </ol>
+
+              <div className="bg-black/90 border border-emerald-500/30 rounded-lg p-2 text-[10px] text-amber-200 break-all select-all">
+                chrome://flags/#enable-experimental-web-platform-features
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(
+                    'chrome://flags/#enable-experimental-web-platform-features'
+                  );
+                  setCopiedFlag(true);
+                  setTimeout(() => setCopiedFlag(false), 2500);
+                }}
+                className="w-full py-2 px-3 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs cursor-pointer transition"
+              >
+                {copiedFlag
+                  ? '✓ COPIED! PASTE IN CHROME ADDRESS BAR'
+                  : 'COPY FLAG URL'}
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBleFlagModal(false);
+                  handleToggleSimulation(true);
+                }}
+                className="flex-1 py-2 px-2 rounded-xl bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-200 text-[11px] font-bold cursor-pointer"
+              >
+                USE SIMULATOR INSTEAD
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowBleFlagModal(false)}
+                className="py-2 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-[11px] font-bold cursor-pointer"
+              >
+                GOT IT
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

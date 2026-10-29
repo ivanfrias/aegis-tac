@@ -177,11 +177,12 @@ export class BleRadarEngine {
   }
 
   /**
-   * Starts continuous Web Bluetooth passive advertisement scanning (`requestLEScan`)
+   * Starts continuous Web Bluetooth passive advertisement scanning (`requestLEScan`).
+   * Never opens the `requestDevice` pairing dialog (use `scanSingleDeviceViaPicker` for that).
    */
   public async startContinuousScan(): Promise<{
     ok: boolean;
-    mode: 'LE_SCAN' | 'DEVICE_WATCH' | 'ERROR';
+    mode: 'LE_SCAN' | 'NEEDS_FLAG' | 'ERROR';
     message: string;
   }> {
     if (!navigator.bluetooth) {
@@ -193,32 +194,38 @@ export class BleRadarEngine {
       };
     }
 
-    // 1. Try continuous passive LE scan first
-    if (typeof navigator.bluetooth.requestLEScan === 'function') {
-      try {
-        const scan = await navigator.bluetooth.requestLEScan({
-          acceptAllAdvertisements: true,
-          keepRepeatedDevices: true,
-        });
-        this.activeScan = scan;
-        navigator.bluetooth.addEventListener?.(
-          'advertisementreceived',
-          this.boundAdvHandler
-        );
-        return {
-          ok: true,
-          mode: 'LE_SCAN',
-          message: 'Passive BLE Radar Sweep active (all nearby advertisements).',
-        };
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        // Fall through to requestDevice + watchAdvertisements if user or flag blocked requestLEScan
-        console.warn('requestLEScan failed, attempting device picker fallback:', msg);
-      }
+    if (typeof navigator.bluetooth.requestLEScan !== 'function') {
+      return {
+        ok: false,
+        mode: 'NEEDS_FLAG',
+        message:
+          'Passive BLE Sweep requires enabling chrome://flags/#enable-experimental-web-platform-features in Chrome.',
+      };
     }
 
-    // 2. Fallback: requestDevice + watchAdvertisements
-    return this.scanSingleDeviceViaPicker();
+    try {
+      const scan = await navigator.bluetooth.requestLEScan({
+        acceptAllAdvertisements: true,
+        keepRepeatedDevices: true,
+      });
+      this.activeScan = scan;
+      navigator.bluetooth.addEventListener?.(
+        'advertisementreceived',
+        this.boundAdvHandler
+      );
+      return {
+        ok: true,
+        mode: 'LE_SCAN',
+        message: 'Passive BLE Radar Sweep active (all nearby advertisements).',
+      };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        ok: false,
+        mode: 'ERROR',
+        message: `Passive BLE Sweep blocked or cancelled: ${msg}`,
+      };
+    }
   }
 
   /**
