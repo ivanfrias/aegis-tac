@@ -408,69 +408,70 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-dvh w-full bg-[#050b07] text-emerald-100 flex flex-col select-none">
-      {/* Top Navigation & Mode Switcher Bar */}
-      <header className="sticky top-0 z-30 bg-[#07120c]/95 backdrop-blur border-b border-emerald-500/25 px-2.5 py-1.5 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-6 h-6 rounded-md bg-emerald-500/15 border border-emerald-400/40 flex items-center justify-center shrink-0">
-            <Radar
-              className="w-3.5 h-3.5 text-emerald-400 animate-spin"
-              style={{ animationDuration: '6s' }}
-            />
-          </div>
-          <div className="min-w-0">
-            <div className="font-mono text-[11px] sm:text-xs font-extrabold tracking-wider text-emerald-300 flex items-center gap-1.5 truncate">
-              <span className="truncate">AEGISTAC</span>
-              <span className="text-[9px] bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.2 rounded text-emerald-200 shrink-0">
-                {callsign}
-              </span>
+      {/* Top Telemetry Bar */}
+      <header className="sticky top-0 z-30 bg-[#07120c]/95 backdrop-blur border-b border-emerald-500/25 px-3 py-2 flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-6 h-6 rounded-md bg-emerald-500/15 border border-emerald-400/40 flex items-center justify-center shrink-0">
+              <Radar
+                className="w-3.5 h-3.5 text-emerald-400 animate-spin"
+                style={{ animationDuration: '6s' }}
+              />
             </div>
-            <div className="text-[9px] font-mono text-emerald-400/70 flex items-center gap-1 truncate">
-              <span>HDG {Math.round(headingDeg)}°</span>
-              <span>•</span>
-              <span>{roomCode}</span>
-              <span>•</span>
-              <span>{maxRangeMeters}m</span>
+            <div className="min-w-0">
+              <div className="font-mono text-xs font-extrabold tracking-wider text-emerald-300 flex items-center gap-1.5 truncate">
+                <span className="truncate">AEGISTAC</span>
+                <span className="text-[10px] bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.2 rounded text-emerald-200 shrink-0">
+                  {callsign}
+                </span>
+              </div>
+              <div className="text-[10px] font-mono text-emerald-400/70 flex items-center gap-1.5 truncate">
+                <span>HDG {Math.round(headingDeg)}°</span>
+                <span>•</span>
+                <span>ROOM: {roomCode}</span>
+                <span>•</span>
+                <span>SCALE: {maxRangeMeters}m</span>
+              </div>
             </div>
-          </div>
-        </div>
-
-        {/* 2-Screen Switcher: BASIC (Combat HUD) vs ADVANCED (Command & Setup) */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          <div className="bg-black/60 p-0.5 rounded-lg border border-emerald-500/30 flex items-center">
-            <button
-              onClick={() => setScreenMode('BASIC')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-mono text-[10px] sm:text-xs font-bold transition cursor-pointer ${
-                screenMode === 'BASIC'
-                  ? 'bg-emerald-500 text-black shadow'
-                  : 'text-emerald-300/70 hover:text-emerald-200'
-              }`}
-            >
-              <Eye className="w-3 h-3" />
-              <span>BASIC</span>
-            </button>
-            <button
-              onClick={() => setScreenMode('ADVANCED')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-mono text-[10px] sm:text-xs font-bold transition cursor-pointer ${
-                screenMode === 'ADVANCED'
-                  ? 'bg-cyan-500 text-black shadow'
-                  : 'text-emerald-300/70 hover:text-emerald-200'
-              }`}
-            >
-              <Wrench className="w-3 h-3" />
-              <span>ADVANCED</span>
-            </button>
           </div>
 
           <button
             onClick={() => setAudioAlerts((v) => !v)}
-            className="p-1.5 rounded-lg bg-emerald-950/50 border border-emerald-500/30 text-emerald-300 hover:text-emerald-100 cursor-pointer"
+            className="p-2 rounded-lg bg-emerald-950/50 border border-emerald-500/30 text-emerald-300 hover:text-emerald-100 cursor-pointer shrink-0"
             title="Toggle Audio Alerts"
           >
             {audioAlerts ? (
-              <Volume2 className="w-3.5 h-3.5" />
+              <Volume2 className="w-4 h-4" />
             ) : (
-              <VolumeX className="w-3.5 h-3.5 text-zinc-500" />
+              <VolumeX className="w-4 h-4 text-zinc-500" />
             )}
+          </button>
+        </div>
+
+        {/* Full-Width Prominent Screen Switcher: BASIC MODE vs ADVANCED MODE */}
+        <div className="grid grid-cols-2 gap-1.5 bg-black/70 p-1 rounded-xl border border-emerald-500/35">
+          <button
+            onClick={() => setScreenMode('BASIC')}
+            className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg font-mono text-xs font-extrabold tracking-wide transition cursor-pointer ${
+              screenMode === 'BASIC'
+                ? 'bg-emerald-500 text-black shadow-[0_0_12px_rgba(16,185,129,0.45)]'
+                : 'text-emerald-300/75 hover:text-emerald-200 bg-emerald-950/25'
+            }`}
+          >
+            <Eye className="w-4 h-4 shrink-0" />
+            <span>BASIC HUD</span>
+          </button>
+
+          <button
+            onClick={() => setScreenMode('ADVANCED')}
+            className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg font-mono text-xs font-extrabold tracking-wide transition cursor-pointer ${
+              screenMode === 'ADVANCED'
+                ? 'bg-cyan-400 text-black shadow-[0_0_12px_rgba(34,211,238,0.45)]'
+                : 'text-emerald-300/75 hover:text-emerald-200 bg-emerald-950/25'
+            }`}
+          >
+            <Wrench className="w-4 h-4 shrink-0" />
+            <span>ADVANCED ({bogeyCount} BLE)</span>
           </button>
         </div>
       </header>
