@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+import { BleClient, ScanMode } from '@capacitor-community/bluetooth-le';
 import {
   BleContact,
   ENVIRONMENT_CONFIG,
@@ -7,7 +9,7 @@ import {
 } from '../types/radar';
 
 // Web Bluetooth Experimental Type Definitions
-interface BluetoothAdvertisingEvent extends Event {
+interface WebBleAdvertisingEvent {
   device: {
     id: string;
     name?: string;
@@ -16,7 +18,7 @@ interface BluetoothAdvertisingEvent extends Event {
   name?: string;
   rssi?: number;
   txPower?: number;
-  uuids?: string[];
+  uuids?: Array<string | number>;
   manufacturerData?: Map<number, DataView>;
   serviceData?: Map<string, DataView>;
 }
@@ -39,7 +41,7 @@ const BLE_COMPANY_NAMES: Record<number, string> = {
 };
 
 function identifyBleDeviceLabel(
-  event: BluetoothAdvertisingEvent,
+  event: WebBleAdvertisingEvent,
   fallbackId: string
 ): { label: string; isExplicitName: boolean } {
   const shortTag = fallbackId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase() || 'BLE';
@@ -100,55 +102,32 @@ interface BluetoothLEScan {
   stop: () => void;
 }
 
-declare global {
-  interface Navigator {
-    bluetooth?: {
-      requestDevice: (options: {
-        acceptAllDevices?: boolean;
-        filters?: Array<Record<string, unknown>>;
-        optionalServices?: string[];
-      }) => Promise<{
-        id: string;
-        name?: string;
-        watchAdvertisements?: () => Promise<void>;
-        addEventListener?: (
-          type: string,
-          listener: (event: BluetoothAdvertisingEvent) => void
-        ) => void;
-      }>;
-      requestLEScan?: (options: {
-        acceptAllAdvertisements?: boolean;
-        keepRepeatedDevices?: boolean;
-      }) => Promise<BluetoothLEScan>;
-      addEventListener?: (
-        type: string,
-        listener: (event: BluetoothAdvertisingEvent) => void
-      ) => void;
-      removeEventListener?: (
-        type: string,
-        listener: (event: BluetoothAdvertisingEvent) => void
-      ) => void;
-    };
-  }
-}
-
 export interface BleCapabilities {
   hasWebBluetooth: boolean;
   hasLEScan: boolean;
   isSecureContext: boolean;
+  isNativeApp?: boolean;
 }
 
 export function getBleCapabilities(): BleCapabilities {
-  const hasWebBluetooth = typeof navigator !== 'undefined' && !!navigator.bluetooth;
+  const isNativeApp =
+    typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform();
+  const hasWebBluetooth =
+    isNativeApp ||
+    (typeof navigator !== 'undefined' && !!navigator.bluetooth);
   const hasLEScan =
-    hasWebBluetooth && typeof navigator.bluetooth?.requestLEScan === 'function';
+    isNativeApp ||
+    (hasWebBluetooth &&
+      typeof navigator.bluetooth?.requestLEScan === 'function');
   const isSecureContext =
-    typeof window !== 'undefined' ? window.isSecureContext : false;
+    isNativeApp ||
+    (typeof window !== 'undefined' ? window.isSecureContext : false);
 
   return {
     hasWebBluetooth,
     hasLEScan,
     isSecureContext,
+    isNativeApp,
   };
 }
 
@@ -184,17 +163,20 @@ function angleDiffDeg(target: number, current: number): number {
 export class BleRadarEngine {
   private contacts = new Map<string, BleContact>();
   private activeScan: BluetoothLEScan | null = null;
+  private nativeScanning = false;
   private environment: EnvironmentPreset = 'COMPOUND';
   private currentHeadingDeg = 0;
   private whitelist = new Map<string, WhitelistedDevice>();
   private simInterval: number | null = null;
   private cleanupInterval: number | null = null;
   private onUpdateCallback: (contacts: BleContact[]) => void;
-  private boundAdvHandler: (event: BluetoothAdvertisingEvent) => void;
+  private boundAdvHandler: (event: Event) => void;
 
   constructor(onUpdate: (contacts: BleContact[]) => void) {
     this.onUpdateCallback = onUpdate;
-    this.boundAdvHandler = this.handleAdvertisement.bind(this);
+    this.boundAdvHandler = (ev: Event) => {
+      this.handleAdvertisement(ev as unknown as WebBleAdvertisingEvent);
+    };
 
     // Prune stale passive contacts older than 60 seconds (never prune manually paired or whitelisted devices)
     this.cleanupInterval = window.setInterval(() => {
@@ -274,20 +256,103 @@ export class BleRadarEngine {
   }
 
   /**
-   * Starts continuous Web Bluetooth passive advertisement scanning (`requestLEScan`).
-   * Never opens the `requestDevice` pairing dialog (use `scanSingleDeviceViaPicker` for that).
+   * Starts continuous passive BLE advertisement scanning.
+   * Uses Native Android/WearOS BluetoothLeScanner (LOW_LATENCY) when installed as an APK,
+   * or Web Bluetooth `requestLEScan` in Chrome.
    */
   public async startContinuousScan(): Promise<{
     ok: boolean;
     mode: 'LE_SCAN' | 'NEEDS_FLAG' | 'ERROR';
     message: string;
   }> {
+    // 1. Native Android / WearOS APK Path (Zero Chrome Flags, Full Hardware Power)
+    if (typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform()) {
+      try {
+        await BleClient.initialize({ androidNeverForLocation: false });
+
+        // Also query any already-connected BLE peripherals (e.g. paired Galaxy Watch / headset)
+        try {
+          const connected = await BleClient.getConnectedDevices([]);
+          for (const dev of connected) {
+            this.ingestReading({
+              id: dev.deviceId,
+              name: dev.name || `Connected BLE (${dev.deviceId.slice(-4)})`,
+              isExplicitName: !!dev.name,
+              rssi: -62,
+              txPower: -69,
+              simulated: false,
+            });
+          }
+        } catch {
+          // ignore if OS blocks connected list without service filter
+        }
+
+        await BleClient.requestLEScan(
+          {
+            allowDuplicates: true,
+            scanMode: ScanMode.SCAN_MODE_LOW_LATENCY,
+          },
+          (result) => {
+            const mfgMap = new Map<number, DataView>();
+            if (result.manufacturerData) {
+              for (const [k, v] of Object.entries(result.manufacturerData)) {
+                const parsedId = k.startsWith('0x')
+                  ? parseInt(k, 16)
+                  : parseInt(k, 10);
+                if (!Number.isNaN(parsedId)) {
+                  mfgMap.set(parsedId, v);
+                }
+              }
+            }
+
+            const svcMap = new Map<string, DataView>();
+            if (result.serviceData) {
+              for (const [k, v] of Object.entries(result.serviceData)) {
+                svcMap.set(k, v);
+              }
+            }
+
+            const syntheticEvent = {
+              device: {
+                id: result.device.deviceId,
+                name: result.localName || result.device.name,
+              },
+              name: result.localName || result.device.name,
+              rssi: result.rssi,
+              txPower: result.txPower,
+              uuids: result.uuids,
+              manufacturerData: mfgMap,
+              serviceData: svcMap,
+            } as unknown as WebBleAdvertisingEvent;
+
+            this.handleAdvertisement(syntheticEvent);
+          }
+        );
+
+        this.nativeScanning = true;
+        return {
+          ok: true,
+          mode: 'LE_SCAN',
+          message:
+            'Native Hardware BLE Radar Sweep active (LOW_LATENCY • Phone & WearOS).',
+        };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return {
+          ok: false,
+          mode: 'ERROR',
+          message: `Native BLE Sweep error: ${msg}`,
+        };
+      }
+    }
+
+    // 2. Web Browser Path
     if (!navigator.bluetooth) {
       return {
         ok: false,
         mode: 'ERROR',
         message:
-          'Web Bluetooth API is not available in this browser. Use Chrome on Android/Desktop or Bluefy on iOS.',
+          'Web Bluetooth API is not available in this browser. Use Chrome on Android/Desktop, Bluefy on iOS, or the Native APK.',
       };
     }
 
@@ -384,6 +449,12 @@ export class BleRadarEngine {
   }
 
   public stopScan() {
+    if (this.nativeScanning) {
+      this.nativeScanning = false;
+      void BleClient.stopLEScan().catch(() => {
+        // ignore
+      });
+    }
     if (this.activeScan) {
       try {
         this.activeScan.stop();
@@ -398,7 +469,7 @@ export class BleRadarEngine {
     );
   }
 
-  private handleAdvertisement(event: BluetoothAdvertisingEvent) {
+  private handleAdvertisement(event: WebBleAdvertisingEvent) {
     const id = event.device?.id || 'unknown-ble';
     const { label, isExplicitName } = identifyBleDeviceLabel(event, id);
     const rssi = typeof event.rssi === 'number' ? event.rssi : -72;

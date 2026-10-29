@@ -21,6 +21,7 @@ import {
   HelpCircle,
   Trash2,
   X,
+  Watch,
 } from 'lucide-react';
 import {
   BleContact,
@@ -49,11 +50,20 @@ import { TacticalControls } from './components/TacticalControls';
 import { BleContactsList } from './components/BleContactsList';
 import { SquadPanel } from './components/SquadPanel';
 import { FieldManualModal } from './components/FieldManualModal';
+import { WatchHud } from './components/WatchHud';
 
-export type ScreenMode = 'BASIC' | 'ADVANCED';
+export type ScreenMode = 'BASIC' | 'WATCH' | 'ADVANCED';
 
-  export const App: React.FC = () => {
-  const [screenMode, setScreenMode] = useState<ScreenMode>('BASIC');
+export const App: React.FC = () => {
+  const [screenMode, setScreenMode] = useState<ScreenMode>(() => {
+    if (
+      typeof window !== 'undefined' &&
+      (window.innerWidth <= 290 || window.innerHeight <= 290)
+    ) {
+      return 'WATCH';
+    }
+    return 'BASIC';
+  });
   const [showManual, setShowManual] = useState<boolean>(() => {
     try {
       return localStorage.getItem('aegistac_onboarded_v1') !== 'true';
@@ -125,6 +135,11 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
 
   const playTacticalTone = (freq = 880, durationMs = 90) => {
     if (!audioAlerts) return;
+    try {
+      navigator.vibrate?.(Math.min(220, durationMs));
+    } catch {
+      // ignore
+    }
     try {
       const AudioCtx =
         window.AudioContext ||
@@ -625,38 +640,89 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
           </div>
         </div>
 
-        {/* Full-Width Prominent Screen Switcher: BASIC MODE vs ADVANCED MODE */}
-        <div className="grid grid-cols-2 gap-1.5 bg-black/70 p-1 rounded-xl border border-emerald-500/35">
+        {/* Full-Width Prominent Screen Switcher: BASIC vs WATCH vs ADVANCED */}
+        <div className="grid grid-cols-3 gap-1.5 bg-black/70 p-1 rounded-xl border border-emerald-500/35">
           <button
             onClick={() => setScreenMode('BASIC')}
-            className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg font-mono text-xs font-extrabold tracking-wide transition cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg font-mono text-xs font-extrabold tracking-wide transition cursor-pointer ${
               screenMode === 'BASIC'
                 ? 'bg-emerald-500 text-black shadow-[0_0_12px_rgba(16,185,129,0.45)]'
                 : 'text-emerald-300/75 hover:text-emerald-200 bg-emerald-950/25'
             }`}
           >
-            <Eye className="w-4 h-4 shrink-0" />
-            <span>BASIC HUD</span>
+            <Eye className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">BASIC HUD</span>
+          </button>
+
+          <button
+            onClick={() => setScreenMode('WATCH')}
+            className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg font-mono text-xs font-extrabold tracking-wide transition cursor-pointer ${
+              screenMode === 'WATCH'
+                ? 'bg-amber-400 text-black shadow-[0_0_12px_rgba(251,191,36,0.45)]'
+                : 'text-amber-300/80 hover:text-amber-200 bg-amber-950/25'
+            }`}
+            title="Full-Screen Circular Smartwatch HUD (Galaxy Watch / WearOS)"
+          >
+            <Watch className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">WATCH HUD</span>
           </button>
 
           <button
             onClick={() => setScreenMode('ADVANCED')}
-            className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg font-mono text-xs font-extrabold tracking-wide transition cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg font-mono text-xs font-extrabold tracking-wide transition cursor-pointer ${
               screenMode === 'ADVANCED'
                 ? 'bg-cyan-400 text-black shadow-[0_0_12px_rgba(34,211,238,0.45)]'
                 : 'text-emerald-300/75 hover:text-emerald-200 bg-emerald-950/25'
             }`}
           >
-            <Wrench className="w-4 h-4 shrink-0" />
-            <span>ADVANCED ({bogeyCount} BLE)</span>
+            <Wrench className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">ADVANCED ({bogeyCount})</span>
           </button>
         </div>
       </header>
 
-      {/* =====================================================================
-          SCREEN 1: BASIC / COMBAT HUD (Zero Clutter, Large Radar, Glove Buttons)
-         ===================================================================== */}
-      {screenMode === 'BASIC' ? (
+      {screenMode === 'WATCH' ? (
+        <WatchHud
+          contacts={contacts}
+          squadMembers={squadMembers}
+          selfPeerId={selfPeerId}
+          pings={pings}
+          selfLat={selfLat}
+          selfLng={selfLng}
+          headingDeg={headingDeg}
+          maxRangeMeters={maxRangeMeters}
+          headUpMode={headUpMode}
+          showSatellite={showSatellite}
+          mapStyle={mapStyle}
+          activePingTool={activePingTool}
+          isScanning={isScanning}
+          simEnabled={simEnabled}
+          bleOnlyMode={bleOnlyMode}
+          playerStatus={playerStatus}
+          onStartScan={handleStartPassiveScan}
+          onStopScan={handleStopScan}
+          onToggleSim={() => handleToggleSimulation(!simEnabled)}
+          onToggleBleOnly={() => setBleOnlyMode((v) => !v)}
+          onCycleRange={() => {
+            const scales = [20, 40, 75, 120];
+            const next =
+              scales[(scales.indexOf(maxRangeMeters) + 1) % scales.length];
+            setMaxRangeMeters(next);
+          }}
+          onToggleHeadUp={() => setHeadUpMode((v) => !v)}
+          onCycleStatus={() => {
+            const order: PlayerStatus[] = ['ACTIVE', 'HIT', 'MEDIC'];
+            const next =
+              order[(order.indexOf(playerStatus) + 1) % order.length];
+            handleStatusChange(next);
+          }}
+          onEnemyPingTap={() => handleBasicPingClick('ENEMY')}
+          onRadarTapPing={handleRadarTapPing}
+          onRemovePing={handleRemovePing}
+          onClearAllPings={handleClearAllPings}
+          onExitWatchMode={() => setScreenMode('BASIC')}
+        />
+      ) : screenMode === 'BASIC' ? (
         <main className="flex-1 w-full max-w-md mx-auto px-3 py-2 flex flex-col justify-between gap-2">
           {/* Top Threat Proximity Strip + Quick Map/Range Pills */}
           <div className="flex items-center justify-between gap-2">
