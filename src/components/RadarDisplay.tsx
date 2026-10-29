@@ -429,10 +429,17 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = (props) => {
           for (const member of p.squadMembers) {
             if (member.peerId === p.selfPeerId) continue;
 
-            let distMeters = 18;
-            let bearingDeg = member.heading || 45;
+            const hasBothGps =
+              p.selfLat !== null &&
+              p.selfLng !== null &&
+              member.lat !== null &&
+              member.lng !== null;
+
+            let distMeters = 2;
+            let bearingDeg = member.heading || 0;
 
             if (
+              hasBothGps &&
               p.selfLat !== null &&
               p.selfLng !== null &&
               member.lat !== null &&
@@ -453,10 +460,9 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = (props) => {
             }
 
             const clampedDist = Math.min(p.maxRangeMeters, distMeters);
-            const radiusPx = Math.max(
-              16,
-              (clampedDist / p.maxRangeMeters) * outerRadius
-            );
+            const radiusPx = hasBothGps
+              ? Math.max(8, (clampedDist / p.maxRangeMeters) * outerRadius)
+              : 18;
             const rad = bearingToCanvasRad(
               bearingDeg,
               p.headUpMode,
@@ -493,11 +499,18 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = (props) => {
               : isHit
               ? ' [HIT]'
               : '';
+            const distCaption = hasBothGps
+              ? `${
+                  distMeters < 10
+                    ? distMeters.toFixed(1)
+                    : Math.round(distMeters)
+                }m`
+              : 'NO GPS';
             ctx.fillStyle = isMedic ? '#fca5a5' : '#bae6fd';
             ctx.font = 'bold 10px monospace';
             ctx.textAlign = 'center';
             ctx.fillText(
-              `${member.callsign}${statusBadge} ${Math.round(distMeters)}m`,
+              `${member.callsign}${statusBadge} ${distCaption}`,
               mx,
               my - 12
             );

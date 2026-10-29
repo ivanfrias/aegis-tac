@@ -208,26 +208,79 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
 
   useEffect(() => {
     if (!navigator.geolocation) return;
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        setSelfLat(pos.coords.latitude);
-        setSelfLng(pos.coords.longitude);
-        setHasGpsLock(true);
-        p2pRef.current?.updateSelfState({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        });
-      },
+
+    let smoothedLat: number | null = null;
+    let smoothedLng: number | null = null;
+    let fallbackWatchId: number | null = null;
+
+    const applyGpsFix = (pos: GeolocationPosition) => {
+      const rawLat = pos.coords.latitude;
+      const rawLng = pos.coords.longitude;
+      const acc = pos.coords.accuracy || 15;
+
+      // Smooth indoor GPS multipath jitter while keeping outdoor movement responsive
+      if (smoothedLat === null || smoothedLng === null || acc <= 8) {
+        smoothedLat = rawLat;
+        smoothedLng = rawLng;
+      } else {
+        const alpha = 0.4;
+        smoothedLat = alpha * rawLat + (1 - alpha) * smoothedLat;
+        smoothedLng = alpha * rawLng + (1 - alpha) * smoothedLng;
+      }
+
+      setSelfLat(smoothedLat);
+      setSelfLng(smoothedLng);
+      setHasGpsLock(true);
+      p2pRef.current?.updateSelfState({
+        lat: smoothedLat,
+        lng: smoothedLng,
+      });
+    };
+
+    // 1. Grab an immediate coarse/fused position so indoor devices never hang at null (18m default)
+    navigator.geolocation.getCurrentPosition(
+      applyGpsFix,
       () => {
-        setHasGpsLock(false);
+        // ignore initial coarse error; watchPosition will handle it
+      },
+      {
+        enableHighAccuracy: false,
+        maximumAge: 30000,
+        timeout: 10000,
+      }
+    );
+
+    // 2. Continuous high-accuracy watch with automatic indoor fused fallback on timeout
+    const watchId = navigator.geolocation.watchPosition(
+      applyGpsFix,
+      () => {
+        if (fallbackWatchId === null) {
+          fallbackWatchId = navigator.geolocation.watchPosition(
+            applyGpsFix,
+            () => {
+              if (smoothedLat === null) setHasGpsLock(false);
+            },
+            {
+              enableHighAccuracy: false,
+              maximumAge: 10000,
+              timeout: 15000,
+            }
+          );
+        }
       },
       {
         enableHighAccuracy: true,
-        maximumAge: 3000,
-        timeout: 8000,
+        maximumAge: 5000,
+        timeout: 20000,
       }
     );
-    return () => navigator.geolocation.clearWatch(watchId);
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+      if (fallbackWatchId !== null) {
+        navigator.geolocation.clearWatch(fallbackWatchId);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -959,6 +1012,10 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
                 onSnapContactAhead={(deviceId) => {
                   bleEngineRef.current?.snapContactToCurrentHeading(deviceId);
                   playTacticalTone(1100, 60);
+                }}
+                onCalibrateOneMeter={(deviceId) => {
+                  bleEngineRef.current?.calibrateContactAtOneMeter(deviceId);
+                  playTacticalTone(1300, 70);
                 }}
               />
             )}

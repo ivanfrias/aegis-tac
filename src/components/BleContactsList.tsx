@@ -27,6 +27,7 @@ interface BleContactsListProps {
   onWhitelistContact: (contact: BleContact, customCallsign?: string) => void;
   onRemoveWhitelist: (deviceId: string) => void;
   onSnapContactAhead?: (deviceId: string) => void;
+  onCalibrateOneMeter?: (deviceId: string) => void;
 }
 
 export const BleContactsList: React.FC<BleContactsListProps> = ({
@@ -44,6 +45,7 @@ export const BleContactsList: React.FC<BleContactsListProps> = ({
   onWhitelistContact,
   onRemoveWhitelist,
   onSnapContactAhead,
+  onCalibrateOneMeter,
 }) => {
   const [showCompatHelp, setShowCompatHelp] = useState(false);
   const [filterType, setFilterType] = useState<'ALL' | 'BOGEY' | 'ALLY'>('ALL');
@@ -247,6 +249,16 @@ export const BleContactsList: React.FC<BleContactsListProps> = ({
                   <span className="font-bold text-xs">
                     {contact.distanceMeters}m
                   </span>
+
+                  {onCalibrateOneMeter && (
+                    <button
+                      onClick={() => onCalibrateOneMeter(contact.id)}
+                      className="bg-amber-500/20 hover:bg-amber-500/35 border border-amber-400/50 text-amber-200 text-[9px] px-1.5 py-0.5 rounded cursor-pointer"
+                      title="Hold this device ~1 meter away and tap 1m CAL to calibrate exact distance for its antenna"
+                    >
+                      1m CAL
+                    </button>
+                  )}
 
                   {onSnapContactAhead && (
                     <button

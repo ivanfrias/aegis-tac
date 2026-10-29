@@ -79,16 +79,21 @@ export function getBleCapabilities(): BleCapabilities {
 /**
  * Converts smoothed RSSI (dBm) to estimated distance in meters
  * using the Log-Distance Path Loss Model:
- *   d = 10 ^ ((txPower - rssi) / (10 * n))
+ *   d = 10 ^ ((rssiAt1m - rssi) / (10 * n))
+ *
+ * Note: For real smartphones/smartwatches, received RSSI at 1 meter is
+ * typically around -69 dBm (whereas event.txPower in BLE packets is the
+ * 0m transmit power like -8 dBm or +4 dBm, not 1m RSSI).
  */
 export function rssiToDistanceMeters(
   rssi: number,
-  txPower = -59,
+  txPower = -69,
   environment: EnvironmentPreset = 'COMPOUND'
 ): number {
   const n = ENVIRONMENT_CONFIG[environment].pathLossExponent;
-  const effectiveTx = txPower && txPower < 0 ? txPower : -59;
-  const ratio = (effectiveTx - rssi) / (10 * n);
+  const effectiveRssiAt1m =
+    txPower && txPower <= -45 && txPower >= -85 ? txPower : -69;
+  const ratio = (effectiveRssiAt1m - rssi) / (10 * n);
   const dist = Math.pow(10, ratio);
   return Math.max(0.5, Math.min(150, Number(dist.toFixed(1))));
 }
@@ -173,6 +178,22 @@ export class BleRadarEngine {
     if (!contact) return;
     contact.estimatedBearingDeg = this.currentHeadingDeg;
     contact.arcSpreadDeg = 35;
+    this.emitUpdate();
+  }
+
+  /**
+   * Calibrates a BLE contact's 1-meter reference RSSI to its current smoothed RSSI
+   * (when the user holds the device ~1 meter away and taps "1m CAL")
+   */
+  public calibrateContactAtOneMeter(deviceId: string) {
+    const contact = this.contacts.get(deviceId);
+    if (!contact) return;
+    contact.txPower = Math.max(-85, Math.min(-45, contact.smoothedRssi));
+    contact.distanceMeters = rssiToDistanceMeters(
+      contact.smoothedRssi,
+      contact.txPower,
+      this.environment
+    );
     this.emitUpdate();
   }
 
@@ -309,7 +330,9 @@ export class BleRadarEngine {
         ? `UUID:${event.uuids[0].slice(0, 6)}`
         : `SIG-${id.slice(0, 5).toUpperCase()}`);
     const rssi = typeof event.rssi === 'number' ? event.rssi : -72;
-    const txPower = typeof event.txPower === 'number' ? event.txPower : -59;
+    // Note: event.txPower in BLE advertisements is 0m transmit power (-12 to +8 dBm),
+    // not 1-meter reference RSSI (-69 dBm). Keep -69 dBm unless calibrated.
+    const txPower = -69;
 
     this.ingestReading({
       id,
@@ -331,7 +354,7 @@ export class BleRadarEngine {
     bearingHintDeg?: number;
     simulated?: boolean;
   }) {
-    const { id, name, rssi, txPower = -59, bearingHintDeg, simulated = false } = params;
+    const { id, name, rssi, txPower = -69, bearingHintDeg, simulated = false } = params;
     const now = Date.now();
     const existing = this.contacts.get(id);
     const wl = this.whitelist.get(id);
