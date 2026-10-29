@@ -123,17 +123,17 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = ({
         ctx.arc(cx, cy, outerRadius, 0, Math.PI * 2);
         ctx.fill();
       } else {
-        // Subtle vignette over satellite map
+        // Subtle vignette over satellite map so terrain stays clearly visible
         const vig = ctx.createRadialGradient(
           cx,
           cy,
-          outerRadius * 0.5,
+          outerRadius * 0.55,
           cx,
           cy,
           outerRadius
         );
-        vig.addColorStop(0, 'rgba(2, 12, 8, 0.15)');
-        vig.addColorStop(1, 'rgba(2, 12, 8, 0.72)');
+        vig.addColorStop(0, 'rgba(2, 12, 8, 0.05)');
+        vig.addColorStop(1, 'rgba(2, 12, 8, 0.45)');
         ctx.fillStyle = vig;
         ctx.beginPath();
         ctx.arc(cx, cy, outerRadius, 0, Math.PI * 2);

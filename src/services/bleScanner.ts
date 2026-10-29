@@ -421,33 +421,40 @@ export class BleRadarEngine {
       {
         id: 'sim-bogey-alpha',
         name: 'UNK-WATCH-7A',
-        baseRssi: -64,
+        baseRssi: -81, // ~9m - 22m
+        rssiSwing: 9,
         bearing: 35,
+        speed: 0.55,
         phase: 0,
       },
       {
         id: 'sim-bogey-bravo',
         name: 'BLE-AUDIO-X9',
-        baseRssi: -74,
-        bearing: 305,
-        phase: 1.8,
+        baseRssi: -88, // ~16m - 34m
+        rssiSwing: 8,
+        bearing: 295,
+        speed: 0.4,
+        phase: 2.1,
       },
       {
         id: 'sim-bogey-charlie',
         name: 'TAC-BEACON-04',
-        baseRssi: -57,
-        bearing: 140,
-        phase: 3.4,
+        baseRssi: -75, // ~5m - 14m
+        rssiSwing: 7,
+        bearing: 145,
+        speed: 0.65,
+        phase: 4.0,
       },
     ];
 
     const stepSim = () => {
       const t = Date.now() / 1000;
       for (const target of simTargets) {
-        // Oscillate RSSI so user sees APPROACHING / RECEDING trends and distance rings
-        const wave = Math.sin(t * 0.45 + target.phase) * 8;
+        // Oscillate RSSI across realistic field distances (5m to 35m) and rotate bearings
+        const wave = Math.sin(t * target.speed + target.phase) * target.rssiSwing;
         const rssi = Math.round(target.baseRssi + wave);
-        const driftBearing = (target.bearing + Math.cos(t * 0.2 + target.phase) * 12 + 360) % 360;
+        const driftBearing =
+          (target.bearing + Math.sin(t * 0.25 + target.phase) * 28 + 360) % 360;
 
         this.ingestReading({
           id: target.id,

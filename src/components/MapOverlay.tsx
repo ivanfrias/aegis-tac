@@ -11,14 +11,14 @@ interface MapOverlayProps {
   mapStyle: 'SATELLITE' | 'TOPO';
 }
 
-// Default tactical staging coordinates (can be overridden by live GPS or manual drag)
+// Default tactical staging coordinates before GPS lock
 const FALLBACK_COORDS: [number, number] = [37.7749, -122.4194];
 
 function rangeToZoomLevel(rangeMeters: number): number {
-  if (rangeMeters <= 20) return 19;
-  if (rangeMeters <= 45) return 18;
-  if (rangeMeters <= 85) return 17;
-  return 16;
+  if (rangeMeters <= 25) return 18;
+  if (rangeMeters <= 50) return 17;
+  if (rangeMeters <= 90) return 16;
+  return 15;
 }
 
 export const MapOverlay: React.FC<MapOverlayProps> = ({
@@ -55,13 +55,26 @@ export const MapOverlay: React.FC<MapOverlayProps> = ({
     const satUrl =
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
     const layer = L.tileLayer(satUrl, {
+      maxNativeZoom: 17, // Prevents missing/blank satellite tiles at high zoom anywhere in the world
       maxZoom: 19,
+      crossOrigin: true,
     }).addTo(map);
 
     mapRef.current = map;
     tileLayerRef.current = layer;
 
+    // Ensure Leaflet recalculates tile coverage whenever the radar circle resizes
+    const ro = new ResizeObserver(() => {
+      map.invalidateSize({ animate: false });
+    });
+    ro.observe(containerRef.current);
+
+    setTimeout(() => {
+      map.invalidateSize({ animate: false });
+    }, 150);
+
     return () => {
+      ro.disconnect();
       map.remove();
       mapRef.current = null;
     };
@@ -78,10 +91,11 @@ export const MapOverlay: React.FC<MapOverlayProps> = ({
   useEffect(() => {
     if (!mapRef.current) return;
     const targetZoom = rangeToZoomLevel(maxRangeMeters);
+    mapRef.current.invalidateSize({ animate: false });
     mapRef.current.setView([effectiveLat, effectiveLng], targetZoom, {
       animate: false,
     });
-  }, [effectiveLat, effectiveLng, maxRangeMeters]);
+  }, [effectiveLat, effectiveLng, maxRangeMeters, visible]);
 
   if (!visible) return null;
 
@@ -92,21 +106,21 @@ export const MapOverlay: React.FC<MapOverlayProps> = ({
       <div
         ref={containerRef}
         style={{
-          width: '145%',
-          height: '145%',
-          left: '-22.5%',
-          top: '-22.5%',
+          width: '146%',
+          height: '146%',
+          left: '-23%',
+          top: '-23%',
           transform: `rotate(${rotation}deg)`,
           transition: 'transform 120ms linear',
           filter:
             mapStyle === 'SATELLITE'
-              ? 'brightness(0.55) contrast(1.25) saturate(0.75) hue-rotate(35deg)'
-              : 'invert(0.9) hue-rotate(110deg) brightness(0.55) contrast(1.3)',
+              ? 'brightness(0.85) contrast(1.15) saturate(0.85)'
+              : 'invert(0.88) hue-rotate(110deg) brightness(0.75) contrast(1.2)',
         }}
         className="relative"
       />
-      {/* Tactical CRT / Night-Vision Tint */}
-      <div className="absolute inset-0 bg-emerald-950/35 mix-blend-multiply" />
+      {/* Subtle tactical green tint that preserves satellite visibility */}
+      <div className="absolute inset-0 bg-emerald-950/20 pointer-events-none" />
     </div>
   );
 };
