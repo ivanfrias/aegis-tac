@@ -61,7 +61,6 @@ export const TacticalControls: React.FC<TacticalControlsProps> = ({
 }) => {
   const handlePingButtonClick = (type: PingType) => {
     if (activePingTool === type) {
-      // Second tap immediately drops the ping 20m dead ahead of current heading
       onQuickPingAhead(type);
       onSelectPingTool(null);
     } else {
@@ -70,99 +69,101 @@ export const TacticalControls: React.FC<TacticalControlsProps> = ({
   };
 
   return (
-    <div className="bg-[#08140e]/90 border border-emerald-500/25 rounded-xl p-3 flex flex-col gap-3">
+    <div className="bg-[#08140e]/95 border border-emerald-500/25 rounded-xl p-2.5 flex flex-col gap-2">
       {/* Row 1: Glove-Friendly Player Status Buttons (ACTIVE / HIT / MEDIC) */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-1.5">
         <button
           onClick={() => onStatusChange('ACTIVE')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-lg font-mono text-xs font-bold border transition cursor-pointer ${
+          className={`flex items-center justify-center gap-1 py-2 px-1.5 rounded-lg font-mono text-[11px] sm:text-xs font-bold border transition cursor-pointer ${
             status === 'ACTIVE'
-              ? 'bg-emerald-500 text-black border-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.5)]'
+              ? 'bg-emerald-500 text-black border-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.45)]'
               : 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30 hover:bg-emerald-900/40'
           }`}
         >
-          <Shield className="w-4 h-4" />
-          <span>IN PLAY</span>
+          <Shield className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">IN PLAY</span>
         </button>
 
         <button
           onClick={() => onStatusChange('HIT')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-lg font-mono text-xs font-bold border transition cursor-pointer ${
+          className={`flex items-center justify-center gap-1 py-2 px-1.5 rounded-lg font-mono text-[11px] sm:text-xs font-bold border transition cursor-pointer ${
             status === 'HIT'
-              ? 'bg-zinc-300 text-black border-white shadow-[0_0_12px_rgba(255,255,255,0.4)]'
+              ? 'bg-zinc-300 text-black border-white shadow-[0_0_10px_rgba(255,255,255,0.35)]'
               : 'bg-zinc-900/80 text-zinc-300 border-zinc-600/40 hover:bg-zinc-800'
           }`}
         >
-          <Skull className="w-4 h-4" />
-          <span>HIT / DEAD</span>
+          <Skull className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">HIT / OUT</span>
         </button>
 
         <button
           onClick={() => onStatusChange('MEDIC')}
-          className={`flex items-center justify-center gap-1.5 py-2.5 px-2 rounded-lg font-mono text-xs font-bold border transition cursor-pointer ${
+          className={`flex items-center justify-center gap-1 py-2 px-1.5 rounded-lg font-mono text-[11px] sm:text-xs font-bold border transition cursor-pointer ${
             status === 'MEDIC'
-              ? 'bg-red-600 text-white border-red-300 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.7)]'
+              ? 'bg-red-600 text-white border-red-300 animate-pulse shadow-[0_0_12px_rgba(239,68,68,0.65)]'
               : 'bg-red-950/50 text-red-300 border-red-500/40 hover:bg-red-900/50'
           }`}
         >
-          <HeartPulse className="w-4 h-4" />
-          <span>MEDIC!</span>
+          <HeartPulse className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">MEDIC!</span>
         </button>
       </div>
 
-      {/* Row 2: Tactical Pings (Tap once to place on radar, tap twice to drop 20m ahead) */}
+      {/* Row 2: Tactical Pings */}
       <div>
-        <div className="flex items-center justify-between text-[10px] font-mono text-emerald-400/75 mb-1.5">
-          <span>TACTICAL PINGS (TAP RADAR OR DOUBLE-TAP FOR 20M AHEAD)</span>
+        <div className="flex items-center justify-between text-[10px] font-mono text-emerald-400/75 mb-1">
+          <span className="truncate">
+            PINGS (1-TAP PLACE ON RADAR • 2-TAP 20M AHEAD)
+          </span>
           {activePingTool && (
             <button
               onClick={() => onSelectPingTool(null)}
-              className="text-red-300 underline cursor-pointer"
+              className="text-red-300 underline ml-2 shrink-0 cursor-pointer"
             >
               CANCEL
             </button>
           )}
         </div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-1.5">
           <button
             onClick={() => handlePingButtonClick('ENEMY')}
-            className={`flex items-center justify-center gap-1 py-2 px-2 rounded-lg font-mono text-xs font-bold border transition cursor-pointer ${
+            className={`flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-lg font-mono text-[11px] sm:text-xs font-bold border transition cursor-pointer ${
               activePingTool === 'ENEMY'
                 ? 'bg-red-600 text-white border-red-300'
                 : 'bg-red-950/40 text-red-300 border-red-500/35 hover:bg-red-900/40'
             }`}
           >
-            <Crosshair className="w-3.5 h-3.5" />
-            <span>ENEMY</span>
+            <Crosshair className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">ENEMY</span>
           </button>
 
           <button
             onClick={() => handlePingButtonClick('DANGER')}
-            className={`flex items-center justify-center gap-1 py-2 px-2 rounded-lg font-mono text-xs font-bold border transition cursor-pointer ${
+            className={`flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-lg font-mono text-[11px] sm:text-xs font-bold border transition cursor-pointer ${
               activePingTool === 'DANGER'
                 ? 'bg-orange-500 text-black border-orange-200'
                 : 'bg-orange-950/40 text-orange-300 border-orange-500/35 hover:bg-orange-900/40'
             }`}
           >
-            <AlertTriangle className="w-3.5 h-3.5" />
-            <span>DANGER</span>
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">DANGER</span>
           </button>
 
           <button
             onClick={() => handlePingButtonClick('OBJECTIVE')}
-            className={`flex items-center justify-center gap-1 py-2 px-2 rounded-lg font-mono text-xs font-bold border transition cursor-pointer ${
+            className={`flex items-center justify-center gap-1 py-1.5 px-1.5 rounded-lg font-mono text-[11px] sm:text-xs font-bold border transition cursor-pointer ${
               activePingTool === 'OBJECTIVE'
                 ? 'bg-yellow-400 text-black border-yellow-100'
                 : 'bg-yellow-950/40 text-yellow-300 border-yellow-500/35 hover:bg-yellow-900/40'
             }`}
           >
-            <Flag className="w-3.5 h-3.5" />
-            <span>OBJECTIVE</span>
+            <Flag className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">OBJ</span>
           </button>
         </div>
       </div>
 
-      {/* Row 3: Environment Attenuation Preset & Range Scale */}
+      {/* Row 3: Environment Preset */}
       <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-emerald-500/15">
         {(['CQB', 'COMPOUND', 'WOODLAND'] as EnvironmentPreset[]).map((env) => {
           const cfg = ENVIRONMENT_CONFIG[env];
@@ -171,61 +172,60 @@ export const TacticalControls: React.FC<TacticalControlsProps> = ({
             <button
               key={env}
               onClick={() => onEnvironmentChange(env)}
-              className={`py-1.5 px-2 rounded border font-mono text-[11px] transition cursor-pointer ${
+              className={`py-1 px-1.5 rounded border font-mono text-[10px] sm:text-[11px] transition cursor-pointer ${
                 active
                   ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200 font-bold'
                   : 'bg-black/40 border-emerald-500/20 text-emerald-400/70 hover:text-emerald-200'
               }`}
             >
-              <div>{env}</div>
+              <div className="truncate">{env}</div>
               <div className="text-[9px] opacity-75">
-                {cfg.defaultRangeMeters}m scale
+                {cfg.defaultRangeMeters}m
               </div>
             </button>
           );
         })}
       </div>
 
-      {/* Row 4: Map Overlay, Compass Orientation & Heading Calibration */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-emerald-500/15">
-        <div className="flex items-center gap-1.5">
+      {/* Row 4: Map Overlay, Orientation & Range Buttons */}
+      <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-emerald-500/15">
+        <div className="flex flex-wrap items-center gap-1">
           <button
             onClick={onToggleSatellite}
-            className={`flex items-center gap-1 px-2.5 py-1.5 rounded text-[11px] font-mono border cursor-pointer ${
+            className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono border cursor-pointer ${
               showSatellite
                 ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200'
                 : 'bg-black/40 border-emerald-500/25 text-emerald-400/70'
             }`}
           >
-            <MapIcon className="w-3.5 h-3.5" />
-            <span>{showSatellite ? 'MAP: ON' : 'MAP: OFF'}</span>
+            <MapIcon className="w-3 h-3" />
+            <span>{showSatellite ? 'MAP ON' : 'MAP OFF'}</span>
           </button>
 
           {showSatellite && (
             <button
               onClick={onToggleMapStyle}
-              className="px-2 py-1.5 rounded text-[11px] font-mono border bg-black/40 border-emerald-500/25 text-emerald-300 cursor-pointer"
+              className="px-2 py-1 rounded text-[10px] font-mono border bg-black/40 border-emerald-500/25 text-emerald-300 cursor-pointer"
             >
-              {mapStyle}
+              {mapStyle === 'SATELLITE' ? 'SAT' : 'TOPO'}
             </button>
           )}
 
           <button
             onClick={onToggleHeadUp}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[11px] font-mono border bg-black/40 border-emerald-500/25 text-emerald-300 cursor-pointer"
+            className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-mono border bg-black/40 border-emerald-500/25 text-emerald-300 cursor-pointer"
           >
-            <Compass className="w-3.5 h-3.5" />
-            <span>{headUpMode ? 'HEAD-UP' : 'NORTH-UP'}</span>
+            <Compass className="w-3 h-3" />
+            <span>{headUpMode ? 'HEAD-UP' : 'NORTH'}</span>
           </button>
         </div>
 
-        {/* Range fine-tune */}
-        <div className="flex items-center gap-1 text-[11px] font-mono">
+        <div className="flex items-center gap-1 text-[10px] font-mono">
           {[20, 40, 75, 120].map((r) => (
             <button
               key={r}
               onClick={() => onRangeChange(r)}
-              className={`px-1.5 py-1 rounded border cursor-pointer ${
+              className={`px-1.5 py-0.5 rounded border cursor-pointer ${
                 maxRangeMeters === r
                   ? 'bg-emerald-500/30 border-emerald-400 text-emerald-100 font-bold'
                   : 'bg-black/40 border-emerald-500/20 text-emerald-400/60'
@@ -237,13 +237,13 @@ export const TacticalControls: React.FC<TacticalControlsProps> = ({
         </div>
       </div>
 
-      {/* Compass Sensor / Manual Bearing Scrubber (for Desktop or Rotating Sweep calibration) */}
-      <div className="flex items-center gap-2 text-[11px] font-mono text-emerald-300/80">
+      {/* Row 5: Compass Calibration & Manual Heading Slider */}
+      <div className="flex items-center gap-2 text-[10px] font-mono text-emerald-300/80">
         <button
           onClick={onEnableCompassSensor}
-          className="bg-emerald-950/60 border border-emerald-500/30 px-2 py-1 rounded text-[10px] hover:border-emerald-400 shrink-0 cursor-pointer"
+          className="bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded text-[10px] hover:border-emerald-400 shrink-0 cursor-pointer"
         >
-          {hasCompassLock ? 'COMPASS LOCKED' : 'CALIBRATE COMPASS'}
+          {hasCompassLock ? 'COMPASS OK' : 'SYNC COMPASS'}
         </button>
         <input
           type="range"
@@ -251,9 +251,9 @@ export const TacticalControls: React.FC<TacticalControlsProps> = ({
           max={359}
           value={Math.round(headingDeg)}
           onChange={(e) => onManualHeadingChange(Number(e.target.value))}
-          className="w-full accent-emerald-500 cursor-pointer"
+          className="w-full accent-emerald-500 cursor-pointer h-1.5"
         />
-        <span className="w-12 text-right font-bold text-emerald-200">
+        <span className="w-9 text-right font-bold text-emerald-200 shrink-0">
           {Math.round(headingDeg)}°
         </span>
       </div>

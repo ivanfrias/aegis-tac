@@ -7,6 +7,8 @@ import {
   Navigation,
   Volume2,
   VolumeX,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import {
   BleContact,
@@ -36,7 +38,6 @@ import { BleContactsList } from './components/BleContactsList';
 import { SquadPanel } from './components/SquadPanel';
 
 export const App: React.FC = () => {
-  // Unique peer identifier for this session
   const [selfPeerId] = useState(
     () => `op-${Math.random().toString(36).slice(2, 8)}`
   );
@@ -55,9 +56,10 @@ export const App: React.FC = () => {
   const [mapStyle, setMapStyle] = useState<'SATELLITE' | 'TOPO'>('SATELLITE');
   const [activePingTool, setActivePingTool] = useState<PingType | null>(null);
   const [audioAlerts, setAudioAlerts] = useState<boolean>(true);
-  const [mobileTab, setMobileTab] = useState<'CONTROLS' | 'BLE' | 'SQUAD'>(
+  const [activeTab, setActiveTab] = useState<'CONTROLS' | 'BLE' | 'SQUAD'>(
     'CONTROLS'
   );
+  const [expandedRadar, setExpandedRadar] = useState<boolean>(false);
 
   // Sensors (GPS + Compass)
   const [selfLat, setSelfLat] = useState<number | null>(null);
@@ -72,7 +74,7 @@ export const App: React.FC = () => {
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [simEnabled, setSimEnabled] = useState<boolean>(true);
   const [scanStatusText, setScanStatusText] = useState<string>(
-    'Field Simulator active. Click START BLE SWEEP for live Web Bluetooth.'
+    'Field Sim active. Tap BLE SWEEP for live Web Bluetooth.'
   );
 
   // Squad P2P State
@@ -88,7 +90,6 @@ export const App: React.FC = () => {
   const p2pRef = useRef<SquadP2PService | null>(null);
   const capabilities = getBleCapabilities();
 
-  // Subtle tactical sonar beep using Web Audio API
   const playTacticalTone = (freq = 880, durationMs = 90) => {
     if (!audioAlerts) return;
     try {
@@ -110,11 +111,10 @@ export const App: React.FC = () => {
         ctx.close();
       }, durationMs);
     } catch {
-      // ignore audio context restrictions before user gesture
+      // ignore
     }
   };
 
-  // Initialize BLE Radar Engine & Squad P2P Service
   useEffect(() => {
     const engine = new BleRadarEngine((updatedContacts) => {
       setContacts(updatedContacts);
@@ -151,7 +151,6 @@ export const App: React.FC = () => {
     });
     p2pRef.current = p2p;
 
-    // Auto-connect to default room ECHO-4 with default PIN so multi-tab or squad phones link immediately
     void p2p.connectToRoom(roomCode, callsign, squadPin);
 
     const pingPruneTimer = window.setInterval(() => {
@@ -165,7 +164,6 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Watch Geolocation GPS
   useEffect(() => {
     if (!navigator.geolocation) return;
     const watchId = navigator.geolocation.watchPosition(
@@ -190,7 +188,6 @@ export const App: React.FC = () => {
     return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
-  // Watch DeviceOrientation Compass Heading
   useEffect(() => {
     const handleOrientation = (ev: DeviceOrientationEvent) => {
       const webkitCompass = (
@@ -217,7 +214,6 @@ export const App: React.FC = () => {
       window.removeEventListener('deviceorientation', handleOrientation, true);
   }, []);
 
-  // Handlers
   const handleStartPassiveScan = async () => {
     if (!bleEngineRef.current) return;
     const res = await bleEngineRef.current.startContinuousScan();
@@ -256,7 +252,7 @@ export const App: React.FC = () => {
   const handleWhitelistContact = (contact: BleContact) => {
     const entry: WhitelistedDevice = {
       deviceId: contact.id,
-      label: `FRIENDLY-${contact.name.slice(0, 8)}`,
+      label: `ALLY-${contact.name.slice(0, 7)}`,
       addedBy: callsign,
     };
     const nextWl = [
@@ -322,7 +318,7 @@ export const App: React.FC = () => {
       bearingDeg,
       distanceMeters,
       createdAt: now,
-      expiresAt: now + 45000, // 45 second tactical marker lifetime
+      expiresAt: now + 45000,
     };
 
     p2pRef.current?.sendTacticalPing(ping);
@@ -392,71 +388,94 @@ export const App: React.FC = () => {
   const closestBogey = contacts.find((c) => !c.isFriendly);
 
   return (
-    <div className="min-h-screen h-screen w-screen bg-[#050b07] text-emerald-100 flex flex-col overflow-hidden select-none">
-      {/* Top Tactical Telemetry Bar */}
-      <header className="shrink-0 bg-[#07120c] border-b border-emerald-500/25 px-3 py-2 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-emerald-500/15 border border-emerald-400/40 flex items-center justify-center">
-            <Radar className="w-4 h-4 text-emerald-400 animate-spin" style={{ animationDuration: '6s' }} />
+    <div className="min-h-dvh w-full bg-[#050b07] text-emerald-100 flex flex-col select-none">
+      {/* Compact Responsive Header */}
+      <header className="sticky top-0 z-30 bg-[#07120c]/95 backdrop-blur border-b border-emerald-500/25 px-2.5 py-1.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-6 h-6 rounded-md bg-emerald-500/15 border border-emerald-400/40 flex items-center justify-center shrink-0">
+            <Radar
+              className="w-3.5 h-3.5 text-emerald-400 animate-spin"
+              style={{ animationDuration: '6s' }}
+            />
           </div>
-          <div>
-            <div className="font-mono text-xs font-extrabold tracking-widest text-emerald-300 flex items-center gap-2">
-              <span>AEGISTAC // BLE RADAR</span>
-              <span className="text-[10px] bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.2 rounded text-emerald-200">
+          <div className="min-w-0">
+            <div className="font-mono text-[11px] sm:text-xs font-extrabold tracking-wider text-emerald-300 flex items-center gap-1.5 truncate">
+              <span className="truncate">AEGISTAC</span>
+              <span className="text-[9px] bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.2 rounded text-emerald-200 shrink-0">
                 {callsign}
               </span>
             </div>
-            <div className="text-[10px] font-mono text-emerald-400/70 flex items-center gap-2">
+            <div className="text-[9px] sm:text-[10px] font-mono text-emerald-400/70 flex items-center gap-1.5 truncate">
               <span>HDG {Math.round(headingDeg)}°</span>
               <span>•</span>
-              <span>{hasGpsLock ? 'GPS LOCKED' : 'LOCAL GRID'}</span>
+              <span>{hasGpsLock ? 'GPS' : 'GRID'}</span>
               <span>•</span>
-              <span>{ENVIRONMENT_CONFIG[environment].label}</span>
+              <span>{maxRangeMeters}m</span>
             </div>
           </div>
         </div>
 
-        {/* Threat Proximity Alert Pill & Audio Toggle */}
-        <div className="flex items-center gap-2">
+        {/* Threat Proximity Pill & Audio / Expand Controls */}
+        <div className="flex items-center gap-1.5 shrink-0">
           {closestBogey ? (
             <div
-              className={`px-2.5 py-1 rounded-full font-mono text-[11px] font-bold border flex items-center gap-1.5 ${
+              className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-bold border flex items-center gap-1 ${
                 closestBogey.distanceMeters <= 12
                   ? 'bg-red-950/90 border-red-500 text-red-200 animate-pulse'
                   : 'bg-amber-950/80 border-amber-500/60 text-amber-200'
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-current" />
+              <span className="w-1.5 h-1.5 rounded-full bg-current" />
               <span>
-                BOGEY {closestBogey.distanceMeters}m (
-                {closestBogey.trend === 'APPROACHING' ? '▲' : '•'})
+                {closestBogey.distanceMeters}m{' '}
+                {closestBogey.trend === 'APPROACHING' ? '▲' : ''}
               </span>
             </div>
           ) : (
-            <div className="px-2.5 py-1 rounded-full font-mono text-[11px] bg-emerald-950/60 border border-emerald-500/30 text-emerald-300">
-              SECTOR CLEAR
+            <div className="px-2 py-0.5 rounded-full font-mono text-[10px] bg-emerald-950/60 border border-emerald-500/30 text-emerald-300">
+              CLEAR
             </div>
           )}
 
           <button
+            onClick={() => setExpandedRadar((v) => !v)}
+            className="p-1.5 rounded-lg bg-emerald-950/50 border border-emerald-500/30 text-emerald-300 hover:text-emerald-100 cursor-pointer lg:hidden"
+            title={expandedRadar ? 'Compact Radar View' : 'Maximize Radar View'}
+          >
+            {expandedRadar ? (
+              <Minimize2 className="w-3.5 h-3.5" />
+            ) : (
+              <Maximize2 className="w-3.5 h-3.5" />
+            )}
+          </button>
+
+          <button
             onClick={() => setAudioAlerts((v) => !v)}
             className="p-1.5 rounded-lg bg-emerald-950/50 border border-emerald-500/30 text-emerald-300 hover:text-emerald-100 cursor-pointer"
-            title="Toggle Tactical Audio Alerts"
+            title="Toggle Audio Alerts"
           >
             {audioAlerts ? (
-              <Volume2 className="w-4 h-4" />
+              <Volume2 className="w-3.5 h-3.5" />
             ) : (
-              <VolumeX className="w-4 h-4 text-zinc-500" />
+              <VolumeX className="w-3.5 h-3.5 text-zinc-500" />
             )}
           </button>
         </div>
       </header>
 
-      {/* Main Content Workspace: Responsive 2-Column on Desktop/Landscape, Radar + Tabbed Drawer on Mobile Portrait */}
-      <main className="flex-1 overflow-y-auto lg:overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-3 p-3 max-w-7xl w-full mx-auto">
-        {/* Left/Center Column: 360° Tactical Radar Display */}
-        <div className="lg:col-span-6 flex flex-col items-center justify-center relative">
-          <div className="w-full max-w-[420px]">
+      {/* Main Responsive Layout:
+          - Mobile/Small screens: Compact Radar on top + Tabbed Controls below so everything fits on 1 screen
+          - Wide screens (lg+): Side-by-side Radar on left + Tabbed/Stacked Controls on right */}
+      <main className="flex-1 w-full max-w-6xl mx-auto px-2.5 py-2 grid grid-cols-1 lg:grid-cols-12 gap-2.5 items-start">
+        {/* Left/Top Column: 360° Tactical Radar */}
+        <div className="lg:col-span-6 flex flex-col items-center justify-center w-full">
+          <div
+            className={`w-full transition-all duration-200 mx-auto ${
+              expandedRadar
+                ? 'max-w-[380px] sm:max-w-[430px]'
+                : 'max-w-[250px] xs:max-w-[280px] sm:max-w-[340px] lg:max-w-[410px]'
+            }`}
+          >
             <RadarDisplay
               contacts={contacts}
               squadMembers={squadMembers}
@@ -474,71 +493,70 @@ export const App: React.FC = () => {
             />
           </div>
 
-          {/* Radar Legend Bar */}
-          <div className="mt-1 flex flex-wrap items-center justify-center gap-3 text-[10px] font-mono text-emerald-300/80">
+          {/* Compact Radar Legend */}
+          <div className="mt-1 flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[9px] sm:text-[10px] font-mono text-emerald-300/80">
             <span className="flex items-center gap-1">
-              <span className="w-2.5 h-1 rounded bg-amber-400 inline-block" />
-              BLE Bogey Arc (RSSI)
+              <span className="w-2 h-1 rounded bg-amber-400 inline-block" />
+              Bogey Arc
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rotate-45 bg-cyan-400 inline-block" />
-              Friendly Beacon
+              <span className="w-1.5 h-1.5 rotate-45 bg-cyan-400 inline-block" />
+              Ally BLE
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-sky-400 inline-block" />
-              Squadmate (GPS)
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-400 inline-block" />
+              Squad GPS
             </span>
             <span className="flex items-center gap-1">
-              <Navigation className="w-3 h-3 text-emerald-400 inline" />
-              You ({playerStatus})
+              <Navigation className="w-2.5 h-2.5 text-emerald-400 inline" />
+              {playerStatus}
             </span>
           </div>
         </div>
 
-        {/* Mobile Sub-Navigation Tabs (Hidden on large screens where all panels show) */}
-        <div className="flex lg:hidden grid-cols-3 gap-1.5 bg-[#07120c] p-1 rounded-xl border border-emerald-500/25">
-          <button
-            onClick={() => setMobileTab('CONTROLS')}
-            className={`flex-1 py-1.5 rounded-lg font-mono text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer ${
-              mobileTab === 'CONTROLS'
-                ? 'bg-emerald-600 text-black'
-                : 'text-emerald-300/70'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            <span>HUD & PINGS</span>
-          </button>
-          <button
-            onClick={() => setMobileTab('BLE')}
-            className={`flex-1 py-1.5 rounded-lg font-mono text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer ${
-              mobileTab === 'BLE'
-                ? 'bg-emerald-600 text-black'
-                : 'text-emerald-300/70'
-            }`}
-          >
-            <Bluetooth className="w-3.5 h-3.5" />
-            <span>BLE ({bogeyCount})</span>
-          </button>
-          <button
-            onClick={() => setMobileTab('SQUAD')}
-            className={`flex-1 py-1.5 rounded-lg font-mono text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer ${
-              mobileTab === 'SQUAD'
-                ? 'bg-emerald-600 text-black'
-                : 'text-emerald-300/70'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>SQUAD ({squadMembers.length})</span>
-          </button>
-        </div>
+        {/* Right/Bottom Column: Control Deck */}
+        <div className="lg:col-span-6 flex flex-col gap-2 w-full">
+          {/* Tab Switcher (Visible on all screens so the control deck never overflows vertically) */}
+          <div className="grid grid-cols-3 gap-1 bg-[#07120c] p-1 rounded-xl border border-emerald-500/25">
+            <button
+              onClick={() => setActiveTab('CONTROLS')}
+              className={`py-1.5 px-2 rounded-lg font-mono text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer transition ${
+                activeTab === 'CONTROLS'
+                  ? 'bg-emerald-600 text-black shadow'
+                  : 'text-emerald-300/75 hover:text-emerald-200'
+              }`}
+            >
+              <Sliders className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">HUD & PINGS</span>
+            </button>
 
-        {/* Right Column: Tactical Controls, BLE Contacts & WebRTC Squad Net */}
-        <div className="lg:col-span-6 flex flex-col gap-3 lg:overflow-y-auto pr-0.5">
-          <div
-            className={`${
-              mobileTab === 'CONTROLS' ? 'block' : 'hidden lg:block'
-            }`}
-          >
+            <button
+              onClick={() => setActiveTab('BLE')}
+              className={`py-1.5 px-2 rounded-lg font-mono text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer transition ${
+                activeTab === 'BLE'
+                  ? 'bg-emerald-600 text-black shadow'
+                  : 'text-emerald-300/75 hover:text-emerald-200'
+              }`}
+            >
+              <Bluetooth className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">BLE ({bogeyCount})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('SQUAD')}
+              className={`py-1.5 px-2 rounded-lg font-mono text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer transition ${
+                activeTab === 'SQUAD'
+                  ? 'bg-emerald-600 text-black shadow'
+                  : 'text-emerald-300/75 hover:text-emerald-200'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">SQUAD ({squadMembers.length})</span>
+            </button>
+          </div>
+
+          {/* Active Control Panel (or on extra-large desktop screens, show active tab + quick BLE/Squad below) */}
+          {activeTab === 'CONTROLS' && (
             <TacticalControls
               status={playerStatus}
               activePingTool={activePingTool}
@@ -562,11 +580,9 @@ export const App: React.FC = () => {
               onManualHeadingChange={handleManualHeadingChange}
               onEnableCompassSensor={handleEnableCompassSensor}
             />
-          </div>
+          )}
 
-          <div
-            className={`${mobileTab === 'BLE' ? 'block' : 'hidden lg:block'}`}
-          >
+          {activeTab === 'BLE' && (
             <BleContactsList
               contacts={contacts}
               whitelist={whitelist}
@@ -581,11 +597,9 @@ export const App: React.FC = () => {
               onWhitelistContact={handleWhitelistContact}
               onRemoveWhitelist={handleRemoveWhitelist}
             />
-          </div>
+          )}
 
-          <div
-            className={`${mobileTab === 'SQUAD' ? 'block' : 'hidden lg:block'}`}
-          >
+          {activeTab === 'SQUAD' && (
             <SquadPanel
               callsign={callsign}
               roomCode={roomCode}
@@ -607,7 +621,7 @@ export const App: React.FC = () => {
               onDisconnectRoom={() => p2pRef.current?.disconnect()}
               onAddSimulatedTeammate={handleAddSimulatedTeammate}
             />
-          </div>
+          )}
         </div>
       </main>
     </div>

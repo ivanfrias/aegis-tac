@@ -542,9 +542,9 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = ({
   ]);
 
   return (
-    <div className="relative w-full aspect-square max-w-[430px] mx-auto flex items-center justify-center select-none">
+    <div className="relative w-full h-full aspect-square max-w-full max-h-full mx-auto flex items-center justify-center select-none">
       {/* Satellite / Topo Map Underlay */}
-      <div className="absolute inset-[6%] rounded-full overflow-hidden">
+      <div className="absolute inset-[7%] rounded-full overflow-hidden">
         <MapOverlay
           lat={selfLat}
           lng={selfLng}
@@ -567,8 +567,8 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = ({
 
       {/* Active Ping Placement Hint Banner */}
       {activePingTool && (
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 bg-red-950/90 border border-red-500/60 text-red-200 text-[11px] font-mono px-3 py-1 rounded-full shadow-lg animate-pulse pointer-events-none">
-          TAP RADAR TO DROP [{activePingTool}] PING
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 bg-red-950/90 border border-red-500/60 text-red-200 text-[10px] sm:text-[11px] font-mono px-2.5 py-0.5 rounded-full shadow-lg animate-pulse pointer-events-none whitespace-nowrap">
+          TAP RADAR TO DROP [{activePingTool}]
         </div>
       )}
     </div>
