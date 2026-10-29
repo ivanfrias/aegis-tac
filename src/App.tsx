@@ -18,6 +18,7 @@ import {
   Compass,
   Eye,
   Wrench,
+  HelpCircle,
 } from 'lucide-react';
 import {
   BleContact,
@@ -45,11 +46,28 @@ import { RadarDisplay } from './components/RadarDisplay';
 import { TacticalControls } from './components/TacticalControls';
 import { BleContactsList } from './components/BleContactsList';
 import { SquadPanel } from './components/SquadPanel';
+import { FieldManualModal } from './components/FieldManualModal';
 
 export type ScreenMode = 'BASIC' | 'ADVANCED';
 
-export const App: React.FC = () => {
+  export const App: React.FC = () => {
   const [screenMode, setScreenMode] = useState<ScreenMode>('BASIC');
+  const [showManual, setShowManual] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('aegistac_onboarded_v1') !== 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleCloseManual = () => {
+    try {
+      localStorage.setItem('aegistac_onboarded_v1', 'true');
+    } catch {
+      // ignore
+    }
+    setShowManual(false);
+  };
 
   const [selfPeerId] = useState(
     () => `op-${Math.random().toString(36).slice(2, 8)}`
@@ -435,17 +453,28 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          <button
-            onClick={() => setAudioAlerts((v) => !v)}
-            className="p-2 rounded-lg bg-emerald-950/50 border border-emerald-500/30 text-emerald-300 hover:text-emerald-100 cursor-pointer shrink-0"
-            title="Toggle Audio Alerts"
-          >
-            {audioAlerts ? (
-              <Volume2 className="w-4 h-4" />
-            ) : (
-              <VolumeX className="w-4 h-4 text-zinc-500" />
-            )}
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => setShowManual(true)}
+              className="px-2.5 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/50 text-emerald-200 font-mono text-xs font-bold flex items-center gap-1 cursor-pointer"
+              title="Open Onboarding Guide & Button Reference"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-emerald-300" />
+              <span>GUIDE</span>
+            </button>
+
+            <button
+              onClick={() => setAudioAlerts((v) => !v)}
+              className="p-2 rounded-lg bg-emerald-950/50 border border-emerald-500/30 text-emerald-300 hover:text-emerald-100 cursor-pointer shrink-0"
+              title="Toggle Audio Alerts"
+            >
+              {audioAlerts ? (
+                <Volume2 className="w-4 h-4" />
+              ) : (
+                <VolumeX className="w-4 h-4 text-zinc-500" />
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Full-Width Prominent Screen Switcher: BASIC MODE vs ADVANCED MODE */}
@@ -828,6 +857,8 @@ export const App: React.FC = () => {
           </div>
         </main>
       )}
+      {/* Onboarding & Interactive Button Reference Modal */}
+      <FieldManualModal isOpen={showManual} onClose={handleCloseManual} />
     </div>
   );
 };
