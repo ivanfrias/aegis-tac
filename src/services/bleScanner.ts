@@ -154,9 +154,25 @@ export class BleRadarEngine {
     }
     for (const contact of this.contacts.values()) {
       const wl = this.whitelist.get(contact.id);
+      const wasFriendly = contact.isFriendly;
       contact.isFriendly = !!wl;
       contact.assignedCallsign = wl?.label;
+      // When newly marked as an Ally while in front of the player, snap bearing to forward heading
+      if (!wasFriendly && contact.isFriendly) {
+        contact.estimatedBearingDeg = this.currentHeadingDeg;
+      }
     }
+    this.emitUpdate();
+  }
+
+  /**
+   * Manually snaps a BLE contact's direction to the direction the phone is currently pointing
+   */
+  public snapContactToCurrentHeading(deviceId: string) {
+    const contact = this.contacts.get(deviceId);
+    if (!contact) return;
+    contact.estimatedBearingDeg = this.currentHeadingDeg;
+    contact.arcSpreadDeg = 35;
     this.emitUpdate();
   }
 
@@ -231,12 +247,13 @@ export class BleRadarEngine {
       const deviceId = device.id || `ble-${Math.random().toString(36).slice(2, 7)}`;
       const deviceName = device.name || `BLE-${deviceId.slice(0, 5).toUpperCase()}`;
 
-      // Immediately seed contact so user sees it on radar
+      // Immediately seed contact straight ahead of the user's phone
       this.ingestReading({
         id: deviceId,
         name: markAsFriendlyLabel || deviceName,
-        rssi: -62,
+        rssi: -68,
         txPower: -59,
+        bearingHintDeg: this.currentHeadingDeg,
         simulated: false,
       });
 
@@ -419,42 +436,48 @@ export class BleRadarEngine {
 
     const simTargets = [
       {
+        id: 'sim-bogey-charlie',
+        name: 'TAC-BEACON-04',
+        baseRssi: -75, // ~5m - 14m (straight ahead sector)
+        rssiSwing: 7,
+        bearingOffset: 0,
+        speed: 0.65,
+        phase: 0,
+      },
+      {
         id: 'sim-bogey-alpha',
         name: 'UNK-WATCH-7A',
-        baseRssi: -81, // ~9m - 22m
+        baseRssi: -81, // ~9m - 22m (front-right sector)
         rssiSwing: 9,
-        bearing: 35,
+        bearingOffset: 38,
         speed: 0.55,
-        phase: 0,
+        phase: 1.8,
       },
       {
         id: 'sim-bogey-bravo',
         name: 'BLE-AUDIO-X9',
-        baseRssi: -88, // ~16m - 34m
+        baseRssi: -88, // ~16m - 34m (front-left sector)
         rssiSwing: 8,
-        bearing: 295,
+        bearingOffset: 320,
         speed: 0.4,
-        phase: 2.1,
-      },
-      {
-        id: 'sim-bogey-charlie',
-        name: 'TAC-BEACON-04',
-        baseRssi: -75, // ~5m - 14m
-        rssiSwing: 7,
-        bearing: 145,
-        speed: 0.65,
-        phase: 4.0,
+        phase: 3.4,
       },
     ];
 
     const stepSim = () => {
       const t = Date.now() / 1000;
       for (const target of simTargets) {
-        // Oscillate RSSI across realistic field distances (5m to 35m) and rotate bearings
+        // Oscillate RSSI across realistic field distances (5m to 35m) in front of the player
         const wave = Math.sin(t * target.speed + target.phase) * target.rssiSwing;
         const rssi = Math.round(target.baseRssi + wave);
-        const driftBearing =
-          (target.bearing + Math.sin(t * 0.25 + target.phase) * 28 + 360) % 360;
+        const existing = this.contacts.get(target.id);
+        // If user marked this simulated device as ALLY, keep its snapped bearing relative to forward
+        const baseBrg = existing?.isFriendly
+          ? existing.estimatedBearingDeg
+          : (this.currentHeadingDeg + target.bearingOffset) % 360;
+        const driftBearing = existing?.isFriendly
+          ? baseBrg
+          : (baseBrg + Math.sin(t * 0.25 + target.phase) * 15 + 360) % 360;
 
         this.ingestReading({
           id: target.id,

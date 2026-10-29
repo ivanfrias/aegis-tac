@@ -6,6 +6,7 @@ import {
   Radio,
   PlusCircle,
   Info,
+  Crosshair,
 } from 'lucide-react';
 import { BleContact, WhitelistedDevice } from '../types/radar';
 import { BleCapabilities } from '../services/bleScanner';
@@ -23,6 +24,7 @@ interface BleContactsListProps {
   onToggleSimulation: (enabled: boolean) => void;
   onWhitelistContact: (contact: BleContact, customCallsign?: string) => void;
   onRemoveWhitelist: (deviceId: string) => void;
+  onSnapContactAhead?: (deviceId: string) => void;
 }
 
 export const BleContactsList: React.FC<BleContactsListProps> = ({
@@ -37,6 +39,7 @@ export const BleContactsList: React.FC<BleContactsListProps> = ({
   onToggleSimulation,
   onWhitelistContact,
   onRemoveWhitelist,
+  onSnapContactAhead,
 }) => {
   const [showCompatHelp, setShowCompatHelp] = useState(false);
 
@@ -190,6 +193,17 @@ export const BleContactsList: React.FC<BleContactsListProps> = ({
                   <span className="font-bold text-xs">
                     {contact.distanceMeters}m
                   </span>
+
+                  {onSnapContactAhead && (
+                    <button
+                      onClick={() => onSnapContactAhead(contact.id)}
+                      className="bg-emerald-500/20 hover:bg-emerald-500/35 border border-emerald-400/50 text-emerald-200 text-[9px] px-1.5 py-0.5 rounded flex items-center gap-0.5 cursor-pointer"
+                      title="Point your phone at this device and tap AIM to align its direction straight ahead"
+                    >
+                      <Crosshair className="w-2.5 h-2.5" />
+                      <span>AIM</span>
+                    </button>
+                  )}
 
                   {!contact.isFriendly ? (
                     <button

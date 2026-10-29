@@ -221,39 +221,73 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
   useEffect(() => {
     let lastUiUpdate = 0;
     let lastP2PUpdate = 0;
+    let hasAbsoluteLock = false;
 
-    const handleOrientation = (ev: DeviceOrientationEvent) => {
+    const processHeading = (heading: number) => {
+      const now = Date.now();
+      bleEngineRef.current?.setCurrentHeading(heading);
+
+      if (now - lastUiUpdate > 50) {
+        lastUiUpdate = now;
+        setHeadingDeg(heading);
+        setHasCompassLock(true);
+      }
+
+      if (now - lastP2PUpdate > 600) {
+        lastP2PUpdate = now;
+        p2pRef.current?.updateSelfState({ heading });
+      }
+    };
+
+    // 1. Prefer deviceorientationabsolute on Android so 0° = True Magnetic North (never 180° inverted)
+    const handleAbsoluteOrientation = (ev: Event) => {
+      const devEv = ev as DeviceOrientationEvent;
+      if (typeof devEv.alpha === 'number' && Number.isFinite(devEv.alpha)) {
+        hasAbsoluteLock = true;
+        const heading = ((360 - devEv.alpha) % 360 + 360) % 360;
+        processHeading(heading);
+      }
+    };
+
+    // 2. Fallback for iOS (webkitCompassHeading) or devices without deviceorientationabsolute
+    const handleStandardOrientation = (ev: DeviceOrientationEvent) => {
       const webkitCompass = (
         ev as unknown as { webkitCompassHeading?: number }
       ).webkitCompassHeading;
 
-      let heading: number | null = null;
       if (typeof webkitCompass === 'number' && Number.isFinite(webkitCompass)) {
-        heading = ((webkitCompass % 360) + 360) % 360;
-      } else if (typeof ev.alpha === 'number' && Number.isFinite(ev.alpha)) {
-        heading = ((360 - ev.alpha) % 360 + 360) % 360;
-      }
-
-      if (heading !== null) {
-        const now = Date.now();
-        bleEngineRef.current?.setCurrentHeading(heading);
-
-        if (now - lastUiUpdate > 50) {
-          lastUiUpdate = now;
-          setHeadingDeg(heading);
-          setHasCompassLock(true);
-        }
-
-        if (now - lastP2PUpdate > 600) {
-          lastP2PUpdate = now;
-          p2pRef.current?.updateSelfState({ heading });
-        }
+        processHeading(((webkitCompass % 360) + 360) % 360);
+      } else if (
+        !hasAbsoluteLock &&
+        typeof ev.alpha === 'number' &&
+        Number.isFinite(ev.alpha)
+      ) {
+        processHeading(((360 - ev.alpha) % 360 + 360) % 360);
       }
     };
 
-    window.addEventListener('deviceorientation', handleOrientation, true);
-    return () =>
-      window.removeEventListener('deviceorientation', handleOrientation, true);
+    window.addEventListener(
+      'deviceorientationabsolute',
+      handleAbsoluteOrientation,
+      true
+    );
+    window.addEventListener(
+      'deviceorientation',
+      handleStandardOrientation,
+      true
+    );
+    return () => {
+      window.removeEventListener(
+        'deviceorientationabsolute',
+        handleAbsoluteOrientation,
+        true
+      );
+      window.removeEventListener(
+        'deviceorientation',
+        handleStandardOrientation,
+        true
+      );
+    };
   }, []);
 
   const handleStartPassiveScan = async () => {
@@ -858,6 +892,10 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
                 onToggleSimulation={handleToggleSimulation}
                 onWhitelistContact={handleWhitelistContact}
                 onRemoveWhitelist={handleRemoveWhitelist}
+                onSnapContactAhead={(deviceId) => {
+                  bleEngineRef.current?.snapContactToCurrentHeading(deviceId);
+                  playTacticalTone(1100, 60);
+                }}
               />
             )}
 
