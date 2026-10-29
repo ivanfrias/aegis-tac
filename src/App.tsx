@@ -22,6 +22,7 @@ import {
   Trash2,
   X,
   Watch,
+  Download,
 } from 'lucide-react';
 import {
   BleContact,
@@ -115,6 +116,7 @@ export const App: React.FC = () => {
   const [simEnabled, setSimEnabled] = useState<boolean>(false);
   const [bleOnlyMode, setBleOnlyMode] = useState<boolean>(false);
   const [showBleFlagModal, setShowBleFlagModal] = useState<boolean>(false);
+  const [showApkModal, setShowApkModal] = useState<boolean>(false);
   const [copiedFlag, setCopiedFlag] = useState<boolean>(false);
   const [scanStatusText, setScanStatusText] = useState<string>(
     'Ready. Tap SCAN / BLE SWEEP for live Bluetooth, or SIM: ON to test.'
@@ -617,6 +619,15 @@ export const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => setShowApkModal(true)}
+              className="px-2.5 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/35 border border-cyan-400/60 text-cyan-200 font-mono text-xs font-bold flex items-center gap-1 cursor-pointer"
+              title="Download Android / WearOS APK or Install Web App"
+            >
+              <Download className="w-3.5 h-3.5 text-cyan-300" />
+              <span>APK</span>
+            </button>
+
             <button
               onClick={() => setShowManual(true)}
               className="px-2.5 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/50 text-emerald-200 font-mono text-xs font-bold flex items-center gap-1 cursor-pointer"
@@ -1160,6 +1171,91 @@ export const App: React.FC = () => {
       )}
       {/* Onboarding & Interactive Button Reference Modal */}
       <FieldManualModal isOpen={showManual} onClose={handleCloseManual} />
+
+      {/* Download Native APK & Direct Sideload Guide Modal */}
+      {showApkModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3">
+          <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto bg-[#07130d] border border-cyan-400/50 rounded-2xl p-4 flex flex-col gap-3 shadow-2xl font-mono">
+            <div className="flex items-center justify-between border-b border-emerald-500/25 pb-2">
+              <div className="flex items-center gap-2 text-cyan-300 font-bold text-xs">
+                <Download className="w-4 h-4 text-cyan-400" />
+                <span>INSTALL AEGISTAC (NO PLAY STORE NEEDED)</span>
+              </div>
+              <button
+                onClick={() => setShowApkModal(false)}
+                className="p-1 rounded-lg bg-emerald-950/60 text-emerald-300 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Direct APK Download Button */}
+            <a
+              href="/aegistac.apk"
+              download="aegistac-radar.apk"
+              className="w-full py-3 px-4 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-[0_0_16px_rgba(34,211,238,0.45)] transition"
+            >
+              <Download className="w-4 h-4" />
+              <span>DOWNLOAD NATIVE ANDROID / WATCH .APK</span>
+            </a>
+
+            <div className="bg-black/70 border border-emerald-500/30 rounded-xl p-3 space-y-2 text-[11px]">
+              <div className="text-emerald-300 font-bold">
+                How to Install the .APK on Your Android Phone (No Play Store):
+              </div>
+              <ol className="list-decimal list-inside space-y-1.5 text-emerald-100/90 leading-relaxed">
+                <li>
+                  Tap <strong>DOWNLOAD NATIVE ANDROID / WATCH .APK</strong>{' '}
+                  above.
+                </li>
+                <li>
+                  If Chrome asks <em>&quot;File might be harmful&quot;</em>, tap{' '}
+                  <strong>Download anyway</strong>, then tap{' '}
+                  <strong>Open</strong> when finished.
+                </li>
+                <li>
+                  If prompted for permission, toggle ON{' '}
+                  <strong>Allow from this source</strong> (Install unknown apps)
+                  and tap <strong>Install</strong>.
+                </li>
+                <li>
+                   If Google Play Protect shows <em>&quot;Unrecognized app&quot;</em>{' '}
+                  (because it&apos;s your private test build), tap{' '}
+                  <strong>More details → Install anyway</strong>.
+                </li>
+              </ol>
+            </div>
+
+            <div className="bg-black/70 border border-amber-500/35 rounded-xl p-3 space-y-1.5 text-[11px]">
+              <div className="text-amber-300 font-bold">
+                How to Install the Same .APK onto Galaxy Watch 5:
+              </div>
+              <p className="text-emerald-100/85 leading-relaxed">
+                1. Install the free <strong>Wear Installer 2</strong> or{' '}
+                <strong>Bugjaeger</strong> app on your Android phone.
+                <br />
+                2. On your Galaxy Watch 5, go to{' '}
+                <strong>Settings → About watch → Software info</strong> and tap{' '}
+                <strong>Software version</strong> 7 times to unlock{' '}
+                <strong>Developer options</strong>.
+                <br />
+                3. Enable <strong>Wireless debugging</strong> inside Developer
+                options on the watch, pair from your phone, and select{' '}
+                <code>aegistac-radar.apk</code> to beam it straight onto your
+                watch!
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowApkModal(false)}
+              className="w-full py-2 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold cursor-pointer"
+            >
+              CLOSE
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Passive BLE Sweep Setup Modal (shown when requestLEScan flag is disabled) */}
       {showBleFlagModal && (
