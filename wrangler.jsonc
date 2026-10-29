@@ -1,0 +1,7 @@
+{
+  "name": "airsoft-radar",
+  "compatibility_date": "2025-02-01",
+  "assets": {
+    "directory": "./dist"
+  }
+}
