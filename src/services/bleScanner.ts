@@ -13,10 +13,86 @@ interface BluetoothAdvertisingEvent extends Event {
     name?: string;
     watchAdvertisements?: () => Promise<void>;
   };
+  name?: string;
   rssi?: number;
   txPower?: number;
   uuids?: string[];
   manufacturerData?: Map<number, DataView>;
+  serviceData?: Map<string, DataView>;
+}
+
+const BLE_COMPANY_NAMES: Record<number, string> = {
+  0x0075: 'Samsung (Watch/Phone/Tag)',
+  0x004c: 'Apple (iPhone/Watch/AirTag)',
+  0x00e0: 'Google / WearOS',
+  0x0087: 'Garmin Watch',
+  0x038f: 'Xiaomi / Mi Band',
+  0x0157: 'Amazfit / Huami Watch',
+  0x027d: 'Huawei Watch/Phone',
+  0x012d: 'Sony Audio/Device',
+  0x009e: 'Bose Audio',
+  0x0047: 'Polar Watch/Sensor',
+  0x0059: 'Nordic BLE Tag',
+  0x0006: 'Microsoft Device',
+  0x0310: 'Oppo / OnePlus',
+  0x00d2: 'Dialog BLE Tag',
+};
+
+function identifyBleDeviceLabel(
+  event: BluetoothAdvertisingEvent,
+  fallbackId: string
+): { label: string; isExplicitName: boolean } {
+  const shortTag = fallbackId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase() || 'BLE';
+
+  // 1. Direct advertised device name (from Scan Response or Complete Local Name)
+  const rawName = (event.name || event.device?.name || '').trim();
+  if (rawName) {
+    return { label: rawName, isExplicitName: true };
+  }
+
+  // 2. Check well-known Service UUIDs (WearOS, Samsung Wearable/SmartTag, Heart Rate Watch, Tile)
+  const allUuids: string[] = [
+    ...(event.uuids || []),
+    ...(event.serviceData ? Array.from(event.serviceData.keys()) : []),
+  ].map((u) => String(u).toLowerCase());
+
+  for (const u of allUuids) {
+    if (u.includes('fd5a') || u.includes('fd59')) {
+      return { label: `Samsung SmartTag (${shortTag})`, isExplicitName: false };
+    }
+    if (u.includes('fd69') || u.includes('fee7')) {
+      return { label: `Samsung Watch/Phone (${shortTag})`, isExplicitName: false };
+    }
+    if (u.includes('fe2c')) {
+      return { label: `WearOS / Galaxy Watch (${shortTag})`, isExplicitName: false };
+    }
+    if (u.includes('180d') || u.includes('1826')) {
+      return { label: `Smartwatch / HR (${shortTag})`, isExplicitName: false };
+    }
+    if (u.includes('feed') || u.includes('feec')) {
+      return { label: `Tile Tracker (${shortTag})`, isExplicitName: false };
+    }
+  }
+
+  // 3. Check Bluetooth SIG Manufacturer Company IDs in manufacturerData
+  if (event.manufacturerData && typeof event.manufacturerData.keys === 'function') {
+    for (const companyId of event.manufacturerData.keys()) {
+      const brand = BLE_COMPANY_NAMES[companyId];
+      if (brand) {
+        return { label: `${brand} [${shortTag}]`, isExplicitName: false };
+      }
+      const hexId = companyId.toString(16).toUpperCase().padStart(4, '0');
+      return { label: `BLE Mfg:0x${hexId} [${shortTag}]`, isExplicitName: false };
+    }
+  }
+
+  // 4. Fallback to short UUID or Signal ID
+  if (allUuids.length > 0) {
+    const cleanUuid = allUuids[0].replace(/^0000([0-9a-f]{4})-.*$/, '$1').toUpperCase();
+    return { label: `BLE Svc:${cleanUuid.slice(0, 6)} [${shortTag}]`, isExplicitName: false };
+  }
+
+  return { label: `SIG-${shortTag}`, isExplicitName: false };
 }
 
 interface BluetoothLEScan {
@@ -324,11 +400,7 @@ export class BleRadarEngine {
 
   private handleAdvertisement(event: BluetoothAdvertisingEvent) {
     const id = event.device?.id || 'unknown-ble';
-    const name =
-      event.device?.name ||
-      (event.uuids && event.uuids.length > 0
-        ? `UUID:${event.uuids[0].slice(0, 6)}`
-        : `SIG-${id.slice(0, 5).toUpperCase()}`);
+    const { label, isExplicitName } = identifyBleDeviceLabel(event, id);
     const rssi = typeof event.rssi === 'number' ? event.rssi : -72;
     // Note: event.txPower in BLE advertisements is 0m transmit power (-12 to +8 dBm),
     // not 1-meter reference RSSI (-69 dBm). Keep -69 dBm unless calibrated.
@@ -336,7 +408,8 @@ export class BleRadarEngine {
 
     this.ingestReading({
       id,
-      name,
+      name: label,
+      isExplicitName,
       rssi,
       txPower,
       simulated: false,
@@ -349,12 +422,21 @@ export class BleRadarEngine {
   public ingestReading(params: {
     id: string;
     name: string;
+    isExplicitName?: boolean;
     rssi: number;
     txPower?: number;
     bearingHintDeg?: number;
     simulated?: boolean;
   }) {
-    const { id, name, rssi, txPower = -69, bearingHintDeg, simulated = false } = params;
+    const {
+      id,
+      name,
+      isExplicitName = false,
+      rssi,
+      txPower = -69,
+      bearingHintDeg,
+      simulated = false,
+    } = params;
     const now = Date.now();
     const existing = this.contacts.get(id);
     const wl = this.whitelist.get(id);
@@ -439,6 +521,11 @@ export class BleRadarEngine {
     existing.assignedCallsign = wl?.label;
     if (wl?.label) {
       existing.name = wl.label;
+    } else if (
+      isExplicitName ||
+      (existing.name.startsWith('SIG-') && !name.startsWith('SIG-'))
+    ) {
+      existing.name = name;
     }
 
     this.emitUpdate();

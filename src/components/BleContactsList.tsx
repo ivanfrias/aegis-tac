@@ -186,29 +186,33 @@ export const BleContactsList: React.FC<BleContactsListProps> = ({
       {showCompatHelp && (
         <div className="bg-emerald-950/60 border border-emerald-500/40 rounded-lg p-2 text-[10px] font-mono text-emerald-200 space-y-1">
           <div className="font-bold text-emerald-300">
-            Web Bluetooth Field Setup:
+            Web Bluetooth Field Setup &amp; Smartwatch Tips:
           </div>
           <p className="text-emerald-100/80">
-            • <strong>Android/Desktop Chrome:</strong> Enable passive sweep at:
+            • <strong>Smartwatch already paired to your phone?</strong> When a watch (like Galaxy Watch 5) is already connected to your phone, it stops broadcasting public BLE beacons until you open <strong>Settings → Connections → Bluetooth</strong> on the watch screen (or scan it from a second phone/laptop).
+          </p>
+          <p className="text-emerald-100/80">
+            • <strong>Touch-to-Identify:</strong> Hold your watch/tag right against your phone—it will jump to the very top of the list as <strong>#1 CLOSEST (&lt;1m)</strong> and show its brand (e.g. <code>Samsung</code> / <code>WearOS</code>).
+          </p>
+          <p className="text-emerald-100/80">
+            • <strong>Android/Desktop Chrome Flag:</strong>
             <code className="block bg-black/60 text-amber-300 p-1 mt-0.5 rounded select-all break-all">
               chrome://flags/#enable-experimental-web-platform-features
             </code>
-          </p>
-          <p className="text-emerald-100/80">
-            • <strong>iOS:</strong> Open this URL in the free <strong>Bluefy – Web BLE Browser</strong> app.
           </p>
         </div>
       )}
 
       {/* Contacts List */}
-      <div className="max-h-36 overflow-y-auto space-y-1 pr-0.5">
+      <div className="max-h-44 overflow-y-auto space-y-1 pr-0.5">
         {filteredContacts.length === 0 ? (
           <div className="text-center py-3 text-[11px] font-mono text-emerald-500/50">
             No BLE signals in range. Start Sweep or enable Sim.
           </div>
         ) : (
-          filteredContacts.map((contact) => {
+          filteredContacts.map((contact, idx) => {
             const isClose = contact.distanceMeters <= 12;
+            const isClosestTouching = idx === 0 && contact.distanceMeters <= 1.8;
             return (
               <div
                 key={contact.id}
@@ -231,8 +235,15 @@ export const BleContactsList: React.FC<BleContactsListProps> = ({
                     />
                   )}
                   <div className="truncate">
-                    <div className="font-bold truncate">
-                      {contact.assignedCallsign || contact.name}
+                    <div className="font-bold truncate flex items-center gap-1">
+                      <span className="truncate">
+                        {contact.assignedCallsign || contact.name}
+                      </span>
+                      {isClosestTouching && (
+                        <span className="text-[8px] px-1 py-0.2 rounded bg-emerald-400 text-black font-extrabold shrink-0">
+                          CLOSEST
+                        </span>
+                      )}
                     </div>
                     <div className="text-[9px] opacity-75 truncate">
                       {contact.smoothedRssi}dBm • {Math.round(contact.estimatedBearingDeg)}° •{' '}
