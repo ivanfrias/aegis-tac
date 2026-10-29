@@ -63,6 +63,10 @@ export type P2PMessage =
       member: SquadMember;
     }
   | {
+      type: 'MEMBER_LEAVE';
+      peerId: string;
+    }
+  | {
       type: 'ROSTER_SYNC';
       members: SquadMember[];
       whitelist: WhitelistedDevice[];

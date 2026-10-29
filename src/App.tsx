@@ -181,7 +181,16 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
     });
     p2pRef.current = p2p;
 
-    void p2p.connectToRoom(roomCode, callsign, squadPin);
+    const leftPreviously =
+      typeof window !== 'undefined' &&
+      window.sessionStorage.getItem('aegistac_squad_left') === '1';
+
+    if (!leftPreviously) {
+      void p2p.connectToRoom(roomCode, callsign, squadPin);
+    } else {
+      setSquadStatus('DISCONNECTED');
+      setSquadInfo('Offline / Solo Mode — Enter Room & PIN to join a squad');
+    }
 
     const pingPruneTimer = window.setInterval(() => {
       p2p.pruneExpiredPings();
@@ -190,7 +199,7 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
     return () => {
       clearInterval(pingPruneTimer);
       engine.destroy();
-      p2p.disconnect();
+      void p2p.disconnect();
     };
   }, []);
 
@@ -505,7 +514,28 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
               <div className="text-[10px] font-mono text-emerald-400/70 flex items-center gap-1.5 truncate">
                 <span>HDG {Math.round(headingDeg)}°</span>
                 <span>•</span>
-                <span>ROOM: {roomCode}</span>
+                {squadStatus === 'DISCONNECTED' ? (
+                  <span className="text-zinc-400">SOLO (OFFLINE)</span>
+                ) : (
+                  <span className="flex items-center gap-1">
+                    <span>ROOM: {roomCode}</span>
+                    <button
+                      onClick={() => {
+                        try {
+                          window.sessionStorage.setItem('aegistac_squad_left', '1');
+                        } catch {
+                          // ignore
+                        }
+                        void p2pRef.current?.disconnect();
+                        playTacticalTone(520, 60);
+                      }}
+                      className="text-[9px] px-1 py-0.2 rounded bg-red-900/70 hover:bg-red-700 text-red-200 border border-red-500/50 font-bold cursor-pointer"
+                      title="Leave current squad room"
+                    >
+                      EXIT
+                    </button>
+                  </span>
+                )}
                 <span>•</span>
                 <span>SCALE: {maxRangeMeters}m</span>
               </div>
@@ -913,13 +943,30 @@ export type ScreenMode = 'BASIC' | 'ADVANCED';
                   p2pRef.current?.updateSelfState({ callsign: cs });
                 }}
                 onConnectRoom={(room, cs, pin) => {
+                  try {
+                    window.sessionStorage.removeItem('aegistac_squad_left');
+                  } catch {
+                    // ignore
+                  }
                   setRoomCode(room);
                   setCallsign(cs);
                   setSquadPin(pin);
                   void p2pRef.current?.connectToRoom(room, cs, pin);
                 }}
-                onDisconnectRoom={() => p2pRef.current?.disconnect()}
+                onDisconnectRoom={() => {
+                  try {
+                    window.sessionStorage.setItem('aegistac_squad_left', '1');
+                  } catch {
+                    // ignore
+                  }
+                  void p2pRef.current?.disconnect();
+                  playTacticalTone(520, 60);
+                }}
                 onAddSimulatedTeammate={handleAddSimulatedTeammate}
+                onRemoveMember={(peerId) => {
+                  p2pRef.current?.removeMember(peerId);
+                  playTacticalTone(580, 50);
+                }}
               />
             )}
 

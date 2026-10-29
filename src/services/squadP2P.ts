@@ -30,6 +30,7 @@ export class SquadP2PService {
   private peer: Peer | null = null;
   private hostConnection: DataConnection | null = null;
   private clientConnections = new Map<string, DataConnection>();
+  private connPeerToMemberId = new Map<string, string>();
   private broadcastChannel: BroadcastChannel | null = null;
 
   private isHost = false;
@@ -65,7 +66,7 @@ export class SquadP2PService {
     callsign: string,
     squadPin = '0451'
   ) {
-    this.disconnect();
+    await this.disconnect();
 
     const cleanCode = rawRoomCode
       .trim()
@@ -112,9 +113,10 @@ export class SquadP2PService {
 
       // 2. Setup PeerJS WebRTC connection using the SHA-256 stealth ID
       const candidateHost = new Peer(hostPeerId);
+      this.peer = candidateHost;
 
       candidateHost.on('open', () => {
-        this.peer = candidateHost;
+        if (this.peer !== candidateHost) return;
         this.isHost = true;
         this.callbacks.onStatusChange(
           'CONNECTED_HOST',
@@ -223,16 +225,39 @@ export class SquadP2PService {
 
     conn.on('close', () => {
       this.clientConnections.delete(conn.peer);
+      const departedMemberId = this.connPeerToMemberId.get(conn.peer);
+      if (departedMemberId && departedMemberId !== this.selfMember.peerId) {
+        this.connPeerToMemberId.delete(conn.peer);
+        this.members.delete(departedMemberId);
+        this.emitRoster();
+        void this.relayToClients(
+          { type: 'MEMBER_LEAVE', peerId: departedMemberId },
+          conn.peer
+        );
+      }
     });
   }
 
   private handleIncomingMessage(msg: P2PMessage, fromPeer?: string) {
     switch (msg.type) {
       case 'MEMBER_UPDATE': {
+        if (fromPeer) {
+          this.connPeerToMemberId.set(fromPeer, msg.member.peerId);
+        }
         this.members.set(msg.member.peerId, msg.member);
         this.emitRoster();
         if (this.isHost) {
           void this.relayToClients(msg, fromPeer);
+        }
+        break;
+      }
+      case 'MEMBER_LEAVE': {
+        if (msg.peerId !== this.selfMember.peerId) {
+          this.members.delete(msg.peerId);
+          this.emitRoster();
+          if (this.isHost) {
+            void this.relayToClients(msg, fromPeer);
+          }
         }
         break;
       }
@@ -314,6 +339,16 @@ export class SquadP2PService {
   public addSimulatedMember(mate: SquadMember) {
     this.members.set(mate.peerId, mate);
     this.emitRoster();
+  }
+
+  public removeMember(peerId: string) {
+    if (peerId === this.selfMember.peerId) return;
+    this.members.delete(peerId);
+    this.emitRoster();
+    void this.sendMessage({
+      type: 'MEMBER_LEAVE',
+      peerId,
+    });
   }
 
   public sendTacticalPing(ping: TacticalPing) {
@@ -400,26 +435,78 @@ export class SquadP2PService {
     }
   }
 
-  public disconnect() {
-    if (this.hostConnection) {
-      this.hostConnection.close();
-      this.hostConnection = null;
-    }
-    for (const conn of this.clientConnections.values()) {
-      conn.close();
-    }
+  public async disconnect() {
+    const key = this.aesKey;
+    const bc = this.broadcastChannel;
+    const hostConn = this.hostConnection;
+    const clientConns = Array.from(this.clientConnections.values());
+    const peerInstance = this.peer;
+
+    this.hostConnection = null;
     this.clientConnections.clear();
-    if (this.peer) {
-      this.peer.destroy();
-      this.peer = null;
-    }
-    if (this.broadcastChannel) {
-      this.broadcastChannel.close();
-      this.broadcastChannel = null;
-    }
+    this.connPeerToMemberId.clear();
+    this.peer = null;
+    this.broadcastChannel = null;
     this.isHost = false;
     this.aesKey = null;
-    this.callbacks.onStatusChange('DISCONNECTED');
+    this.roomCode = '';
+
+    // 1. Reset local squad roster immediately so UI updates right away
+    this.members.clear();
+    this.members.set(this.selfMember.peerId, this.selfMember);
+    this.emitRoster();
+
+    this.callbacks.onStatusChange(
+      'DISCONNECTED',
+      'Offline / Solo Mode — Enter Room & PIN to join a squad'
+    );
+
+    // 2. Best-effort notify peers that we are leaving before tearing down links
+    if (key) {
+      try {
+        const leaveMsg: P2PMessage = {
+          type: 'MEMBER_LEAVE',
+          peerId: this.selfMember.peerId,
+        };
+        const env = await encryptSquadMessage(leaveMsg, key);
+        try {
+          bc?.postMessage(env);
+        } catch {
+          // ignore
+        }
+        if (hostConn?.open) {
+          hostConn.send(env);
+        }
+        for (const conn of clientConns) {
+          if (conn.open) conn.send(env);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    try {
+      hostConn?.close();
+    } catch {
+      // ignore
+    }
+    for (const conn of clientConns) {
+      try {
+        conn.close();
+      } catch {
+        // ignore
+      }
+    }
+    try {
+      peerInstance?.destroy();
+    } catch {
+      // ignore
+    }
+    try {
+      bc?.close();
+    } catch {
+      // ignore
+    }
   }
 
   private emitRoster() {

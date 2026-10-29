@@ -7,6 +7,7 @@ import {
   Lock,
   Eye,
   EyeOff,
+  X,
 } from 'lucide-react';
 import { SquadMember } from '../types/radar';
 import { SquadConnectionStatus } from '../services/squadP2P';
@@ -23,6 +24,7 @@ interface SquadPanelProps {
   onConnectRoom: (roomCode: string, callsign: string, squadPin: string) => void;
   onDisconnectRoom: () => void;
   onAddSimulatedTeammate: () => void;
+  onRemoveMember: (peerId: string) => void;
 }
 
 export const SquadPanel: React.FC<SquadPanelProps> = ({
@@ -37,6 +39,7 @@ export const SquadPanel: React.FC<SquadPanelProps> = ({
   onConnectRoom,
   onDisconnectRoom,
   onAddSimulatedTeammate,
+  onRemoveMember,
 }) => {
   const [inputRoom, setInputRoom] = useState(roomCode);
   const [inputCallsign, setInputCallsign] = useState(callsign);
@@ -46,6 +49,16 @@ export const SquadPanel: React.FC<SquadPanelProps> = ({
   const isConnected =
     connectionStatus === 'CONNECTED_HOST' ||
     connectionStatus === 'CONNECTED_PEER';
+  const canLeaveOrReset =
+    isConnected ||
+    connectionStatus === 'CONNECTING' ||
+    members.length > 1;
+
+  const hasPendingEdits =
+    isConnected &&
+    (inputRoom.trim().toUpperCase() !== roomCode.trim().toUpperCase() ||
+      inputCallsign.trim().toUpperCase() !== callsign.trim().toUpperCase() ||
+      inputPin.trim() !== squadPin.trim());
 
   const handleJoinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,24 +83,40 @@ export const SquadPanel: React.FC<SquadPanelProps> = ({
           </span>
         </div>
 
-        <span
-          className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
-            isConnected
-              ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300'
-              : connectionStatus === 'CONNECTING'
-              ? 'bg-amber-500/20 border-amber-400/50 text-amber-300 animate-pulse'
-              : 'bg-zinc-800 border-zinc-700 text-zinc-400'
-          }`}
-        >
-          {connectionStatus === 'CONNECTED_HOST'
-            ? `HOST // ${roomCode}`
-            : connectionStatus === 'CONNECTED_PEER'
-            ? `LINKED // ${roomCode}`
-            : connectionStatus}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span
+            className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
+              isConnected
+                ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300'
+                : connectionStatus === 'CONNECTING'
+                ? 'bg-amber-500/20 border-amber-400/50 text-amber-300 animate-pulse'
+                : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+            }`}
+          >
+            {connectionStatus === 'CONNECTED_HOST'
+              ? `HOST // ${roomCode}`
+              : connectionStatus === 'CONNECTED_PEER'
+              ? `LINKED // ${roomCode}`
+              : connectionStatus === 'DISCONNECTED'
+              ? 'SOLO // OFFLINE'
+              : connectionStatus}
+          </span>
+
+          {canLeaveOrReset && (
+            <button
+              type="button"
+              onClick={onDisconnectRoom}
+              className="bg-red-600 hover:bg-red-500 text-white font-mono font-bold text-[10px] px-2 py-0.5 rounded border border-red-400/60 flex items-center gap-1 cursor-pointer shadow"
+              title="Disconnect from current squad and return to Solo mode"
+            >
+              <Link2Off className="w-3 h-3 shrink-0" />
+              <span>EXIT SQUAD</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Responsive 2-Row Form so inputs never overflow on narrow phone screens */}
+      {/* Responsive Form so inputs never overflow on narrow phone screens */}
       <form onSubmit={handleJoinSubmit} className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
         <input
           type="text"
@@ -130,22 +159,22 @@ export const SquadPanel: React.FC<SquadPanelProps> = ({
           </button>
         </div>
 
-        {!isConnected ? (
+        {!isConnected || hasPendingEdits ? (
           <button
             type="submit"
-            className="bg-cyan-600 hover:bg-cyan-500 text-black font-mono font-bold text-[11px] py-1.5 px-2 rounded-lg flex items-center justify-center gap-1 cursor-pointer"
+            className="bg-cyan-500 hover:bg-cyan-400 text-black font-mono font-bold text-[11px] py-1.5 px-2 rounded-lg flex items-center justify-center gap-1 cursor-pointer"
           >
             <Wifi className="w-3.5 h-3.5 shrink-0" />
-            <span>LINK</span>
+            <span>{isConnected ? 'SWITCH ROOM' : 'JOIN SQUAD'}</span>
           </button>
         ) : (
           <button
             type="button"
             onClick={onDisconnectRoom}
-            className="bg-red-600/80 hover:bg-red-500 text-white font-mono font-bold text-[11px] py-1.5 px-2 rounded-lg flex items-center justify-center gap-1 cursor-pointer"
+            className="bg-red-600/90 hover:bg-red-500 text-white font-mono font-bold text-[11px] py-1.5 px-2 rounded-lg flex items-center justify-center gap-1 cursor-pointer"
           >
             <Link2Off className="w-3.5 h-3.5 shrink-0" />
-            <span>LEAVE</span>
+            <span>LEAVE SQUAD</span>
           </button>
         )}
       </form>
@@ -201,6 +230,16 @@ export const SquadPanel: React.FC<SquadPanelProps> = ({
                 >
                   {m.status}
                 </span>
+                {!isSelf && (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveMember(m.peerId)}
+                    className="p-0.5 rounded bg-red-950/60 hover:bg-red-800/80 text-red-300 border border-red-500/40 cursor-pointer"
+                    title={`Remove ${m.callsign} from squad roster`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
               </div>
             </div>
           );
