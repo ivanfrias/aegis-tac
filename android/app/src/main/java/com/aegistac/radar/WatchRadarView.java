@@ -4,15 +4,18 @@ import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothProfile;
 import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanRecord;
 import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RadialGradient;
@@ -23,10 +26,12 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.location.LocationManager;
 import android.os.Build;
 import android.os.ParcelUuid;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.provider.Settings;
 import android.util.SparseArray;
 import android.view.MotionEvent;
 import android.view.View;
@@ -49,6 +54,7 @@ import java.util.Set;
 public class WatchRadarView extends View implements SensorEventListener {
 
     public interface PermissionRequester {
+        boolean hasAllBlePermissions();
         void requestBlePermissions();
     }
 
@@ -84,16 +90,18 @@ public class WatchRadarView extends View implements SensorEventListener {
     private final List<TacticalPing> pings = new ArrayList<>();
 
     private final PermissionRequester permissionRequester;
+    private final BluetoothManager btManager;
     private BluetoothAdapter bluetoothAdapter;
     private BluetoothLeScanner bleScanner;
     private boolean isScanning = false;
+    private boolean receiverRegistered = false;
     private boolean simEnabled = false;
     private boolean headUpMode = true;
     private boolean enemyPingArmed = false;
     private int maxRangeMeters = 40;
     private float headingDeg = 0f;
     private float sweepAngleRad = 0f;
-    private String statusBanner = "TAP SCAN OR SIM";
+    private String statusBanner = "TAP SCAN TO SWEEP";
 
     // Sensors
     private final SensorManager sensorManager;
@@ -108,6 +116,7 @@ public class WatchRadarView extends View implements SensorEventListener {
 
     // Touch Hit Regions
     private final RectF topPillRect = new RectF();
+    private final RectF statusBannerRect = new RectF();
     private final RectF scanBtnRect = new RectF();
     private final RectF simBtnRect = new RectF();
     private final RectF pingBtnRect = new RectF();
@@ -128,13 +137,39 @@ public class WatchRadarView extends View implements SensorEventListener {
     private long lastSimTick = 0;
     private long lastCleanupTick = 0;
     private long lastCloseAlertTick = 0;
+    private long lastClassicDiscoveryTick = 0;
+
+    private final BroadcastReceiver classicBtReceiver = new BroadcastReceiver() {
+        @Override
+        @SuppressLint("MissingPermission")
+        public void onReceive(Context context, Intent intent) {
+            if (intent == null) return;
+            String action = intent.getAction();
+            if (BluetoothDevice.ACTION_FOUND.equals(action)) {
+                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                short rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, (short) -74);
+                if (device != null) {
+                    String addr = device.getAddress() != null ? device.getAddress() : "bt-dev";
+                    String name = null;
+                    try {
+                        name = device.getName();
+                    } catch (SecurityException ignored) {
+                    }
+                    boolean hasName = name != null && !name.trim().isEmpty();
+                    String shortId = addr.length() >= 5 ? addr.substring(addr.length() - 5).replace(":", "") : addr;
+                    String label = hasName ? name.trim() : "BT-" + shortId;
+                    ingestBleReading(addr, label, hasName, rssi, false);
+                }
+            }
+        }
+    };
 
     public WatchRadarView(Context context, PermissionRequester requester) {
         super(context);
         this.permissionRequester = requester;
         setKeepScreenOn(true);
 
-        BluetoothManager btManager = (BluetoothManager) context.getSystemService(Context.BLUETOOTH_SERVICE);
+        btManager = (BluetoothManager) context.getSystemService(Context.BLUETOOTH_SERVICE);
         if (btManager != null) {
             bluetoothAdapter = btManager.getAdapter();
         }
@@ -154,6 +189,25 @@ public class WatchRadarView extends View implements SensorEventListener {
         pillStrokePaint.setStyle(Paint.Style.STROKE);
     }
 
+    public void setStatusBanner(String msg) {
+        this.statusBanner = msg;
+        postInvalidate();
+    }
+
+    private boolean isLocationServiceEnabled() {
+        try {
+            LocationManager lm = (LocationManager) getContext().getSystemService(Context.LOCATION_SERVICE);
+            if (lm == null) return true;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                return lm.isLocationEnabled();
+            }
+            return lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                   lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER);
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
     public void onResumeView() {
         if (sensorManager != null) {
             if (rotationSensor != null) {
@@ -167,12 +221,27 @@ public class WatchRadarView extends View implements SensorEventListener {
                 }
             }
         }
+        if (!receiverRegistered) {
+            try {
+                IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
+                getContext().registerReceiver(classicBtReceiver, filter);
+                receiverRegistered = true;
+            } catch (Exception ignored) {
+            }
+        }
         postInvalidateOnAnimation();
     }
 
     public void onPauseView() {
         if (sensorManager != null) {
             sensorManager.unregisterListener(this);
+        }
+        if (receiverRegistered) {
+            try {
+                getContext().unregisterReceiver(classicBtReceiver);
+            } catch (Exception ignored) {
+            }
+            receiverRegistered = false;
         }
         stopBleScan();
     }
@@ -191,31 +260,79 @@ public class WatchRadarView extends View implements SensorEventListener {
 
     @SuppressLint("MissingPermission")
     public void startBleScan() {
+        if (permissionRequester != null && !permissionRequester.hasAllBlePermissions()) {
+            statusBanner = "TAP TO ALLOW BT & LOC";
+            permissionRequester.requestBlePermissions();
+            return;
+        }
+
         if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled()) {
             statusBanner = "TURN ON WATCH BT";
             vibrateWatch(120);
             return;
         }
+
+        if (!isLocationServiceEnabled()) {
+            statusBanner = "TURN ON WATCH LOCATION!";
+            vibrateWatch(120);
+        }
+
         try {
-            bleScanner = bluetoothAdapter.getBluetoothLeScanner();
-            if (bleScanner == null) {
-                statusBanner = "BLE UNAVAILABLE";
-                return;
+            // 1. Seed any currently connected GATT devices (e.g., paired phone)
+            if (btManager != null) {
+                List<BluetoothDevice> connected = btManager.getConnectedDevices(BluetoothProfile.GATT);
+                if (connected != null) {
+                    for (BluetoothDevice d : connected) {
+                        if (d != null && d.getAddress() != null) {
+                            String nm = d.getName();
+                            boolean hasNm = nm != null && !nm.trim().isEmpty();
+                            ingestBleReading(
+                                    d.getAddress(),
+                                    hasNm ? nm.trim() : "Connected Phone/BT",
+                                    hasNm,
+                                    -64,
+                                    false
+                            );
+                        }
+                    }
+                }
             }
-            ScanSettings settings = new ScanSettings.Builder()
-                    .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                    .build();
-            bleScanner.startScan(null, settings, scanCallback);
+
+            // 2. Start BLE Low-Latency Scanner
+            bleScanner = bluetoothAdapter.getBluetoothLeScanner();
+            if (bleScanner != null) {
+                try {
+                    bleScanner.stopScan(scanCallback);
+                } catch (Exception ignored) {
+                }
+                ScanSettings settings = new ScanSettings.Builder()
+                        .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                        .setReportDelay(0)
+                        .build();
+                bleScanner.startScan(null, settings, scanCallback);
+            }
+
+            // 3. Also kick off Classic / Dual-Mode Bluetooth discovery so non-BLE phones/headsets show up too
+            try {
+                if (!bluetoothAdapter.isDiscovering()) {
+                    bluetoothAdapter.startDiscovery();
+                    lastClassicDiscoveryTick = System.currentTimeMillis();
+                }
+            } catch (Exception ignored) {
+            }
+
             isScanning = true;
-            statusBanner = "LIVE BLE SWEEP";
+            if (isLocationServiceEnabled()) {
+                statusBanner = "SWEEPING RF (" + contacts.size() + " SIG)";
+            }
             vibrateWatch(60);
         } catch (SecurityException se) {
-            statusBanner = "GRANT BLE PERM";
+            statusBanner = "ALLOW LOCATION & BT";
             if (permissionRequester != null) {
                 permissionRequester.requestBlePermissions();
             }
         } catch (Exception e) {
-            statusBanner = "SCAN ERR";
+            statusBanner = "SCAN ERR: " + e.getClass().getSimpleName();
         }
     }
 
@@ -227,34 +344,57 @@ public class WatchRadarView extends View implements SensorEventListener {
             } catch (Exception ignored) {
             }
         }
+        try {
+            if (bluetoothAdapter != null && bluetoothAdapter.isDiscovering()) {
+                bluetoothAdapter.cancelDiscovery();
+            }
+        } catch (Exception ignored) {
+        }
         isScanning = false;
         statusBanner = "SWEEP PAUSED";
     }
 
     private final ScanCallback scanCallback = new ScanCallback() {
         @Override
-        @SuppressLint("MissingPermission")
         public void onScanResult(int callbackType, ScanResult result) {
-            if (result == null || result.getDevice() == null) return;
-            BluetoothDevice dev = result.getDevice();
-            String id = dev.getAddress() != null ? dev.getAddress() : "ble-unk";
-            int rssi = result.getRssi();
+            processScanResult(result);
+        }
 
-            String rawName = null;
-            try {
-                rawName = dev.getName();
-            } catch (SecurityException ignored) {
+        @Override
+        public void onBatchScanResults(List<ScanResult> results) {
+            if (results == null) return;
+            for (ScanResult r : results) {
+                processScanResult(r);
             }
-            ScanRecord record = result.getScanRecord();
-            if ((rawName == null || rawName.trim().isEmpty()) && record != null) {
-                rawName = record.getDeviceName();
-            }
+        }
 
-            boolean explicit = rawName != null && !rawName.trim().isEmpty();
-            String label = explicit ? rawName.trim() : identifyFromScanRecord(record, id);
-            ingestBleReading(id, label, explicit, rssi, false);
+        @Override
+        public void onScanFailed(int errorCode) {
+            statusBanner = "BLE SCAN ERR #" + errorCode;
         }
     };
+
+    @SuppressLint("MissingPermission")
+    private void processScanResult(ScanResult result) {
+        if (result == null || result.getDevice() == null) return;
+        BluetoothDevice dev = result.getDevice();
+        String id = dev.getAddress() != null ? dev.getAddress() : "ble-unk";
+        int rssi = result.getRssi();
+
+        String rawName = null;
+        try {
+            rawName = dev.getName();
+        } catch (SecurityException ignored) {
+        }
+        ScanRecord record = result.getScanRecord();
+        if ((rawName == null || rawName.trim().isEmpty()) && record != null) {
+            rawName = record.getDeviceName();
+        }
+
+        boolean explicit = rawName != null && !rawName.trim().isEmpty();
+        String label = explicit ? rawName.trim() : identifyFromScanRecord(record, id);
+        ingestBleReading(id, label, explicit, rssi, false);
+    }
 
     private String identifyFromScanRecord(ScanRecord record, String address) {
         String shortId = address.length() >= 5 ? address.substring(address.length() - 5).replace(":", "") : address;
@@ -302,7 +442,7 @@ public class WatchRadarView extends View implements SensorEventListener {
     }
 
     private double rssiToDistance(double rssi, double txPower) {
-        double n = 2.6; // Compound / Outdoor tactical path-loss exponent
+        double n = 2.6;
         double ratio = (txPower - rssi) / (10.0 * n);
         double dist = Math.pow(10.0, ratio);
         return Math.max(0.5, Math.min(150.0, Math.round(dist * 10.0) / 10.0));
@@ -325,13 +465,16 @@ public class WatchRadarView extends View implements SensorEventListener {
             c.rawRssi = rssi;
             c.smoothedRssi = rssi;
             c.distanceMeters = rssiToDistance(rssi, c.txPower);
-            c.bearingDeg = headingDeg;
-            c.arcSpreadDeg = 80f;
+            c.bearingDeg = (headingDeg + (Math.abs(id.hashCode()) % 50) - 25 + 360f) % 360f;
+            c.arcSpreadDeg = 75f;
             c.peakRssi = rssi;
             c.lastSeen = now;
             c.isFriendly = isFriendly;
             c.simulated = simulated;
             contacts.put(id, c);
+            if (isScanning) {
+                statusBanner = "SWEEPING (" + contacts.size() + " DEVICES)";
+            }
             return;
         }
 
@@ -367,7 +510,18 @@ public class WatchRadarView extends View implements SensorEventListener {
         }
     }
 
+    @SuppressLint("MissingPermission")
     private synchronized void tickSimulationAndCleanup(long now) {
+        if (isScanning && bluetoothAdapter != null && now - lastClassicDiscoveryTick > 18000) {
+            lastClassicDiscoveryTick = now;
+            try {
+                if (!bluetoothAdapter.isDiscovering()) {
+                    bluetoothAdapter.startDiscovery();
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
         if (simEnabled && now - lastSimTick > 1300) {
             lastSimTick = now;
             String[] ids = {"sim-1", "sim-2", "sim-3"};
@@ -583,8 +737,8 @@ public class WatchRadarView extends View implements SensorEventListener {
         float btnH = minDim * 0.095f;
 
         // TOP 12 O'CLOCK PILL (Threat / Range Scale Cycler)
-        float topW = minDim * 0.54f;
-        topPillRect.set(cx - topW / 2f, minDim * 0.025f, cx + topW / 2f, minDim * 0.025f + btnH * 0.85f);
+        float topW = minDim * 0.56f;
+        topPillRect.set(cx - topW / 2f, minDim * 0.022f, cx + topW / 2f, minDim * 0.022f + btnH * 0.85f);
         boolean alert = closestBogey != null && closestBogey.distanceMeters <= 12.0;
         drawBezelPill(
                 canvas,
@@ -594,8 +748,16 @@ public class WatchRadarView extends View implements SensorEventListener {
                 closestBogey != null
                         ? String.format(Locale.US, "BOGEY %.1fm • %dm", closestBogey.distanceMeters, maxRangeMeters)
                         : String.format(Locale.US, "⌚ %dm • %d°", maxRangeMeters, Math.round(headingDeg)),
-                minDim * 0.031f
+                minDim * 0.030f
         );
+
+        // Diagnostics / Status Sub-banner (shows live scan count or permission/location prompt)
+        statusBannerRect.set(cx - minDim * 0.34f, topPillRect.bottom + 2f, cx + minDim * 0.34f, topPillRect.bottom + minDim * 0.055f);
+        textPaint.setTextSize(minDim * 0.025f);
+        textPaint.setTextAlign(Paint.Align.CENTER);
+        boolean isWarn = statusBanner.contains("ALLOW") || statusBanner.contains("TURN ON") || statusBanner.contains("ERR");
+        textPaint.setColor(isWarn ? Color.parseColor("#fbbf24") : Color.argb(200, 167, 243, 208));
+        canvas.drawText(statusBanner, cx, statusBannerRect.centerY() + minDim * 0.009f, textPaint);
 
         // LEFT 9 O'CLOCK: SCAN & SIM
         float sideW = minDim * 0.20f;
@@ -689,6 +851,21 @@ public class WatchRadarView extends View implements SensorEventListener {
         float x = event.getX();
         float y = event.getY();
 
+        if (statusBannerRect.contains(x, y)) {
+            if (!isLocationServiceEnabled()) {
+                try {
+                    Intent locIntent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+                    locIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    getContext().startActivity(locIntent);
+                } catch (Exception ignored) {
+                }
+            } else if (permissionRequester != null) {
+                permissionRequester.requestBlePermissions();
+            }
+            vibrateWatch(50);
+            return true;
+        }
+
         if (topPillRect.contains(x, y)) {
             if (maxRangeMeters == 20) maxRangeMeters = 40;
             else if (maxRangeMeters == 40) maxRangeMeters = 75;
@@ -720,7 +897,6 @@ public class WatchRadarView extends View implements SensorEventListener {
 
         if (pingBtnRect.contains(x, y)) {
             if (enemyPingArmed) {
-                // Double tap !ENM drops ping 20m straight ahead
                 TacticalPing p = new TacticalPing();
                 p.bearingDeg = headingDeg;
                 p.distanceMeters = 20;
@@ -735,7 +911,6 @@ public class WatchRadarView extends View implements SensorEventListener {
         }
 
         if (allyBtnRect.contains(x, y)) {
-            // Mark closest non-friendly BLE contact as Friendly Ally and snap its direction ahead
             synchronized (this) {
                 BleContact closest = null;
                 for (BleContact c : contacts.values()) {

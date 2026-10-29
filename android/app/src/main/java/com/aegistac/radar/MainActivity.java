@@ -66,6 +66,23 @@ public class MainActivity extends Activity implements WatchRadarView.PermissionR
     }
 
     @Override
+    public boolean hasAllBlePermissions() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return true;
+        }
+        boolean locGranted =
+                checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            boolean btScan = checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED;
+            boolean btConn = checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
+            return locGranted && btScan && btConn;
+        }
+        return locGranted;
+    }
+
+    @Override
     public void requestBlePermissions() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             if (watchRadarView != null) {
@@ -83,6 +100,11 @@ public class MainActivity extends Activity implements WatchRadarView.PermissionR
                 needed.add(Manifest.permission.BLUETOOTH_CONNECT);
             }
         }
+        // IMPORTANT: On Android 12+ (API 31+), ACCESS_COARSE_LOCATION MUST be requested alongside ACCESS_FINE_LOCATION
+        // or the system silently ignores the location permission prompt and blocks all BLE scan results!
+        if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            needed.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+        }
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             needed.add(Manifest.permission.ACCESS_FINE_LOCATION);
         }
@@ -98,7 +120,11 @@ public class MainActivity extends Activity implements WatchRadarView.PermissionR
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQ_BLE_PERMS && watchRadarView != null) {
-            watchRadarView.startBleScan();
+            if (hasAllBlePermissions()) {
+                watchRadarView.startBleScan();
+            } else {
+                watchRadarView.setStatusBanner("PERM DENIED: ALLOW LOCATION & BT");
+            }
         }
     }
 
