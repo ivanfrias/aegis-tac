@@ -55,7 +55,7 @@ export const MapOverlay: React.FC<MapOverlayProps> = ({
     const satUrl =
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
     const layer = L.tileLayer(satUrl, {
-      maxNativeZoom: 17, // Prevents missing/blank satellite tiles at high zoom anywhere in the world
+      maxNativeZoom: 17,
       maxZoom: 19,
       crossOrigin: true,
     }).addTo(map);
@@ -63,7 +63,6 @@ export const MapOverlay: React.FC<MapOverlayProps> = ({
     mapRef.current = map;
     tileLayerRef.current = layer;
 
-    // Ensure Leaflet recalculates tile coverage whenever the radar circle resizes
     const ro = new ResizeObserver(() => {
       map.invalidateSize({ animate: false });
     });
@@ -97,12 +96,14 @@ export const MapOverlay: React.FC<MapOverlayProps> = ({
     });
   }, [effectiveLat, effectiveLng, maxRangeMeters, visible]);
 
-  if (!visible) return null;
-
   const rotation = headUpMode ? -headingDeg : 0;
 
   return (
-    <div className="absolute inset-0 overflow-hidden rounded-full pointer-events-none">
+    <div
+      className={`absolute inset-0 overflow-hidden rounded-full pointer-events-none transition-opacity duration-200 ${
+        visible ? 'opacity-100' : 'opacity-0'
+      }`}
+    >
       <div
         ref={containerRef}
         style={{
@@ -119,7 +120,6 @@ export const MapOverlay: React.FC<MapOverlayProps> = ({
         }}
         className="relative"
       />
-      {/* Subtle tactical green tint that preserves satellite visibility */}
       <div className="absolute inset-0 bg-emerald-950/20 pointer-events-none" />
     </div>
   );
