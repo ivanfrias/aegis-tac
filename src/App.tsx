@@ -733,7 +733,7 @@ export const App: React.FC = () => {
             </div>
             <div className="min-w-0">
               <div className="font-mono text-xs font-extrabold tracking-wider text-emerald-300 flex items-center gap-1.5 truncate">
-                <span className="truncate">AEGISTAC</span>
+                <span className="truncate">AEGIS TAC</span>
                 <span className="text-[9px] font-mono text-emerald-400/60 font-semibold">v1.2.0</span>
                 <span className="text-[10px] bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.2 rounded text-emerald-200 shrink-0">
                   {callsign}
@@ -1463,7 +1463,7 @@ export const App: React.FC = () => {
             <div className="flex items-center justify-between border-b border-emerald-500/25 pb-2">
               <div className="flex items-center gap-2 text-cyan-300 font-bold text-xs">
                 <Download className="w-4 h-4 text-cyan-400" />
-                <span>INSTALL AEGISTAC (NO PLAY STORE NEEDED)</span>
+                <span>INSTALL AEGIS TAC (NO PLAY STORE NEEDED)</span>
               </div>
               <button
                 onClick={() => setShowApkModal(false)}

@@ -123,7 +123,7 @@ public class WatchRadarView extends View implements SensorEventListener {
 
     private float headingDeg = 0f;
     private float sweepAngleRad = 0f;
-    private String statusBanner = "AEGISTAC " + APP_VERSION + " • READY";
+    private String statusBanner = "AEGIS TAC " + APP_VERSION + " • READY";
 
     // Sensors
     private final SensorManager sensorManager;
@@ -972,7 +972,7 @@ public class WatchRadarView extends View implements SensorEventListener {
         textPaint.setTextSize(minDim * 0.022f);
         textPaint.setTextAlign(Paint.Align.CENTER);
         textPaint.setColor(Color.argb(165, 52, 211, 153));
-        canvas.drawText("AEGISTAC " + APP_VERSION, cx, versionY, textPaint);
+        canvas.drawText("AEGIS TAC " + APP_VERSION, cx, versionY, textPaint);
         bottomModeRect.set(cx - botBtnW * 1.5f - 6f, botY, cx - botBtnW * 0.5f - 6f, botY + topPillH);
         bottomClrRect.set(cx - botBtnW * 0.5f, botY, cx + botBtnW * 0.5f, botY + topPillH);
         quitBtnRect.set(cx + botBtnW * 0.5f + 6f, botY, cx + botBtnW * 1.5f + 6f, botY + topPillH);
@@ -1101,7 +1101,7 @@ public class WatchRadarView extends View implements SensorEventListener {
         }
 
         if (versionRect.contains(x, y)) {
-            statusBanner = "AEGISTAC " + APP_VERSION + " (BUILD " + APP_BUILD + ")";
+            statusBanner = "AEGIS TAC " + APP_VERSION + " (BUILD " + APP_BUILD + ")";
             vibrateWatch(45);
             return true;
         }

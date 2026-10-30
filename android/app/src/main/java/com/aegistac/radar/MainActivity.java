@@ -46,7 +46,7 @@ public class MainActivity extends Activity implements WatchRadarView.PermissionR
 
         watchRadarView = new WatchRadarView(this, this);
         setContentView(watchRadarView);
-        Toast.makeText(this, "AegisTac " + WatchRadarView.APP_VERSION, Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Aegis Tac " + WatchRadarView.APP_VERSION, Toast.LENGTH_SHORT).show();
         requestBlePermissions();
     }
 

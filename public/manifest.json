@@ -1,7 +1,7 @@
 {
-  "name": "AegisTac Airsoft BLE Radar",
-  "short_name": "AegisTac",
-  "description": "Tactical Bluetooth Proximity Radar & Squad Telemetry HUD for Airsoft",
+  "name": "Aegis Tac",
+  "short_name": "Aegis Tac",
+  "description": "Tactical Bluetooth Proximity Radar & Squad Telemetry HUD",
   "start_url": "./",
   "display": "standalone",
   "orientation": "portrait",

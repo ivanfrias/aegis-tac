@@ -49,12 +49,12 @@ export const FieldManualModal: React.FC<FieldManualModalProps> = ({
 
   const tourSteps = [
     {
-      title: '1. Welcome to AegisTac BLE Radar',
+      title: '1. Welcome to Aegis Tac BLE Radar',
       subtitle: 'Tactical Proximity & Encrypted Squad HUD',
       content: (
         <div className="space-y-3 text-xs font-mono text-emerald-100/90">
           <p>
-            <strong>AegisTac</strong> turns your smartphone into a wrist- or
+            <strong>Aegis Tac</strong> turns your smartphone into a wrist- or
             rig-mounted airsoft radar that detects nearby Bluetooth Low Energy
             (BLE) signals and links your squad over encrypted peer-to-peer
             WebRTC.
@@ -192,7 +192,7 @@ export const FieldManualModal: React.FC<FieldManualModalProps> = ({
           <div className="flex items-center gap-2">
             <BookOpen className="w-4 h-4 text-emerald-400" />
             <span className="font-mono text-xs sm:text-sm font-extrabold tracking-wider text-emerald-200 uppercase">
-              AegisTac // Field Manual & Guide
+              Aegis Tac // Field Manual & Guide
             </span>
           </div>
           <button

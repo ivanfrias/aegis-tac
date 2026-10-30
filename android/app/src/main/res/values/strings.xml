@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">AegisTac Radar</string>
-    <string name="title_activity_main">AegisTac Radar</string>
+    <string name="app_name">Aegis Tac</string>
+    <string name="title_activity_main">Aegis Tac</string>
     <string name="package_name">com.aegistac.radar</string>
     <string name="custom_url_scheme">com.aegistac.radar</string>
 </resources>

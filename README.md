@@ -1,6 +1,6 @@
-# AegisTac // Airsoft BLE Tactical Radar PWA
+# Aegis Tac // Tactical Bluetooth Radar PWA & Wear OS App
 
-A zero-backend, mobile-first Progressive Web App (PWA) for airsoft players that combines **Web Bluetooth (`navigator.bluetooth`) RSSI proximity detection** with **serverless WebRTC P2P Squad Telemetry (`PeerJS`)** and a **Leaflet Satellite/Topo Map Overlay**.
+A zero-backend, mobile-first Progressive Web App (PWA) and native Android/Wear OS smartwatch app for airsoft players that combines **Web Bluetooth & Native BLE RSSI proximity detection** with **serverless WebRTC P2P Squad Telemetry (`PeerJS`)** and a **Leaflet Satellite/Topo Map Overlay**.
 
 ## Key Features
 

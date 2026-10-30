@@ -335,7 +335,7 @@ export const WatchHud: React.FC<WatchHudProps> = ({
         {/* 6 O'CLOCK BEZEL: Version & Controls */}
         <div className="absolute bottom-9 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
           <span className="text-[8px] font-mono font-extrabold text-emerald-400/60 tracking-wider">
-            v1.2.0
+            AEGIS TAC • v1.2.0
           </span>
         </div>
 
