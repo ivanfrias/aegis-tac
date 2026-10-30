@@ -465,24 +465,65 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = (props) => {
               const tagText = `${trendSymbol} ${shortLabel} ${contact.distanceMeters}m`;
               drawDeoverlappedTag(bx, by, tagText, `rgb(${baseRgb})`);
             } else {
+              // FRIENDLY UNIT: Marked as Green with directional proximity arc
+              const halfSpreadRad =
+                ((contact.arcSpreadDeg / 2) * Math.PI) / 180;
+              const greenRgb = '52, 211, 153'; // Emerald Green #34d399
+
+              // Outer glowing soft arc
+              ctx.strokeStyle = `rgba(${greenRgb}, ${0.28 * pulse})`;
+              ctx.lineWidth = 10;
+              ctx.lineCap = 'round';
+              ctx.beginPath();
+              ctx.arc(
+                cx,
+                cy,
+                radiusPx,
+                centerRad - halfSpreadRad,
+                centerRad + halfSpreadRad
+              );
+              ctx.stroke();
+
+              // Solid crisp green arc
+              ctx.strokeStyle = `rgba(${greenRgb}, 0.95)`;
+              ctx.lineWidth = 3;
+              ctx.beginPath();
+              ctx.arc(
+                cx,
+                cy,
+                radiusPx,
+                centerRad - halfSpreadRad,
+                centerRad + halfSpreadRad
+              );
+              ctx.stroke();
+
               const fx = cx + Math.cos(centerRad) * radiusPx;
               const fy = cy + Math.sin(centerRad) * radiusPx;
 
+              // Solid green diamond node at bearing center
               ctx.save();
               ctx.translate(fx, fy);
               ctx.rotate(Math.PI / 4);
-              ctx.fillStyle = '#06b6d4';
-              ctx.strokeStyle = '#cffafe';
+              ctx.fillStyle = '#10b981';
+              ctx.strokeStyle = '#a7f3d0';
               ctx.lineWidth = 1.5;
               ctx.fillRect(-5, -5, 10, 10);
               ctx.strokeRect(-5, -5, 10, 10);
               ctx.restore();
 
+              const trendSymbol =
+                contact.trend === 'APPROACHING'
+                  ? '▲'
+                  : contact.trend === 'RECEDING'
+                  ? '▼'
+                  : '•';
+              const label = contact.assignedCallsign || contact.name;
+              const shortLabel = label.length > 9 ? label.slice(0, 9) : label;
               drawDeoverlappedTag(
                 fx,
                 fy,
-                `${contact.assignedCallsign || contact.name} (${contact.distanceMeters}m)`,
-                '#67e8f9'
+                `🛡 ${trendSymbol} ${shortLabel} ${contact.distanceMeters}m`,
+                '#6ee7b7'
               );
             }
           }

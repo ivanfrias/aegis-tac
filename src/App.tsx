@@ -1285,8 +1285,8 @@ export const App: React.FC = () => {
                 Bogey Arc
               </span>
               <span className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rotate-45 bg-cyan-400 inline-block" />
-                Ally BLE
+                <span className="w-2 h-1 rounded bg-emerald-400 inline-block" />
+                Ally Arc (Green)
               </span>
               <span
                 className={`flex items-center gap-1 ${

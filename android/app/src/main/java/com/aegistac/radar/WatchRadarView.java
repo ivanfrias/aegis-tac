@@ -822,11 +822,24 @@ public class WatchRadarView extends View implements SensorEventListener {
                     drawDeoverlappedLabel(canvas, caption, bx, by - minDim * 0.025f, color, minDim * 0.026f, occupiedLabels);
                 }
             } else {
-                fillPaint.setColor(Color.parseColor("#06b6d4"));
+                // Friendly Squad: Marked as Green with directional proximity arc
+                int greenColor = Color.parseColor("#10b981");
+                arcGlowPaint.setColor(Color.argb(70, 16, 185, 129));
+                arcGlowPaint.setStrokeWidth(minDim * 0.024f);
+                arcCorePaint.setColor(greenColor);
+                arcCorePaint.setStrokeWidth(minDim * 0.009f);
+
+                RectF arcRect = new RectF(cx - rPx, cy - rPx, cx + rPx, cy + rPx);
+                float startDeg = (float) Math.toDegrees(cRad) - effectiveSpread / 2f;
+                canvas.drawArc(arcRect, startDeg, effectiveSpread, false, arcGlowPaint);
+                canvas.drawArc(arcRect, startDeg, effectiveSpread, false, arcCorePaint);
+
+                fillPaint.setColor(Color.parseColor("#34d399"));
                 canvas.drawCircle(bx, by, minDim * 0.018f, fillPaint);
+
                 String shortNm = c.name.length() > 7 ? c.name.substring(0, 7) : c.name;
-                String caption = "◆" + shortNm + " " + c.distanceMeters + "m";
-                drawDeoverlappedLabel(canvas, caption, bx, by - minDim * 0.025f, Color.parseColor("#67e8f9"), minDim * 0.026f, occupiedLabels);
+                String caption = "🛡" + shortNm + " " + c.distanceMeters + "m";
+                drawDeoverlappedLabel(canvas, caption, bx, by - minDim * 0.025f, Color.parseColor("#6ee7b7"), minDim * 0.026f, occupiedLabels);
             }
         }
 
