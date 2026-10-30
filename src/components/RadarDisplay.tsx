@@ -107,6 +107,23 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = (props) => {
       }
     }
 
+    // 2. Check if user tapped a BLE contact to select / claim / inspect
+    if (!activePingTool && props.onSelectContact && latestPropsRef.current.contacts.length > 0) {
+      for (const contact of latestPropsRef.current.contacts) {
+        const clampedDist = Math.min(maxRangeMeters, contact.distanceMeters);
+        const radiusPx = Math.max(14, (clampedDist / maxRangeMeters) * maxRadius);
+        const rad = bearingToCanvasRad(contact.estimatedBearingDeg, headUpMode, headingDeg);
+        const bx = cx + Math.cos(rad) * radiusPx;
+        const by = cy + Math.sin(rad) * radiusPx;
+
+        const hitDist = Math.hypot(clickX - bx, clickY - by);
+        if (hitDist <= 28) {
+          props.onSelectContact(contact);
+          return;
+        }
+      }
+    }
+
     if (!activePingTool) return;
 
     const distanceMeters = Math.max(

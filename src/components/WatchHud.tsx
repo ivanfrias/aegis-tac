@@ -12,6 +12,7 @@ import {
   ZoomOut,
   Power,
   Filter,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   BleContact,
@@ -43,6 +44,10 @@ interface WatchHudProps {
   simEnabled: boolean;
   bleOnlyMode: boolean;
   playerStatus: PlayerStatus;
+  whitelistCount: number;
+  onClaimProximity: (maxDistanceMeters: number) => number;
+  onOpenFriendlyRegistry: () => void;
+  onSelectContact?: (contact: BleContact) => void;
   onStartScan: () => void;
   onStopScan: () => void;
   onCycleBleFilter: () => void;
@@ -80,6 +85,10 @@ export const WatchHud: React.FC<WatchHudProps> = ({
   simEnabled,
   bleOnlyMode,
   playerStatus,
+  whitelistCount,
+  onClaimProximity,
+  onOpenFriendlyRegistry,
+  onSelectContact,
   onStartScan,
   onStopScan,
   onCycleBleFilter,
@@ -145,6 +154,7 @@ export const WatchHud: React.FC<WatchHudProps> = ({
             activePingTool={activePingTool}
             onRadarTapPing={onRadarTapPing}
             onRemovePing={onRemovePing}
+            onSelectContact={onSelectContact}
           />
         </div>
 
@@ -296,6 +306,29 @@ export const WatchHud: React.FC<WatchHudProps> = ({
               <HeartPulse className="w-2.5 h-2.5" />
             )}
             <span>{playerStatus === 'ACTIVE' ? 'OK' : playerStatus}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              const claimed = onClaimProximity(8);
+              if (claimed > 0) {
+                showZoomFeedback(`CLAIMED ${claimed} SQUAD`);
+              } else if (whitelistCount > 0) {
+                onOpenFriendlyRegistry();
+              } else {
+                showZoomFeedback(`NO DEVICES IN 8m`);
+              }
+            }}
+            className={`px-2 py-1 rounded-xl font-mono text-[9px] font-extrabold border backdrop-blur-md flex items-center justify-center gap-0.5 shadow-lg cursor-pointer transition active:scale-95 ${
+              whitelistCount > 0
+                ? 'bg-cyan-950/90 border-cyan-400/60 text-cyan-200'
+                : 'bg-cyan-600 border-cyan-300 text-black shadow-[0_0_8px_rgba(34,211,238,0.5)]'
+            }`}
+            title="Claim all devices within 8m as Friendly Squad (or tap to view Friendly Registry)"
+          >
+            <ShieldCheck className="w-2.5 h-2.5" />
+            <span>{whitelistCount > 0 ? `+TEAM (${whitelistCount})` : 'CLAIM <8m'}</span>
           </button>
         </div>
 

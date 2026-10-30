@@ -14,6 +14,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -164,6 +165,7 @@ public class WatchRadarView extends View implements SensorEventListener {
     private long lastCleanupTick = 0;
     private long lastCloseAlertTick = 0;
     private long lastClassicDiscoveryTick = 0;
+    private long lastAllyTapTime = 0;
 
     private final BroadcastReceiver classicBtReceiver = new BroadcastReceiver() {
         @Override
@@ -218,6 +220,23 @@ public class WatchRadarView extends View implements SensorEventListener {
         arcCorePaint.setStyle(Paint.Style.STROKE);
         arcCorePaint.setStrokeCap(Paint.Cap.ROUND);
         pillStrokePaint.setStyle(Paint.Style.STROKE);
+
+        try {
+            SharedPreferences prefs = context.getSharedPreferences("aegistac_prefs", Context.MODE_PRIVATE);
+            Set<String> saved = prefs.getStringSet("friendly_whitelist", null);
+            if (saved != null) {
+                friendlyWhitelist.addAll(saved);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void saveFriendlyWhitelist() {
+        try {
+            SharedPreferences prefs = getContext().getSharedPreferences("aegistac_prefs", Context.MODE_PRIVATE);
+            prefs.edit().putStringSet("friendly_whitelist", new HashSet<>(friendlyWhitelist)).apply();
+        } catch (Exception ignored) {
+        }
     }
 
     public void setStatusBanner(String msg) {
@@ -932,13 +951,15 @@ public class WatchRadarView extends View implements SensorEventListener {
         );
 
         allyBtnRect.set(w - minDim * 0.018f - sideW, cy + 4f, w - minDim * 0.018f, cy + btnH + 4f);
+        int allyCount = friendlyWhitelist.size();
+        String allyLabel = allyCount > 0 ? "+TEAM (" + allyCount + ")" : "CLAIM <8m";
         drawBezelPill(
                 canvas,
                 allyBtnRect,
-                Color.argb(215, 8, 51, 68),
+                allyCount > 0 ? Color.argb(225, 8, 51, 68) : Color.argb(220, 14, 116, 144),
                 Color.parseColor("#67e8f9"),
-                "+ALLY",
-                minDim * 0.028f
+                allyLabel,
+                minDim * 0.026f
         );
 
         // BOTTOM 6 O'CLOCK ROW: [HD-UP] [CLR] [QUIT]
@@ -1154,18 +1175,57 @@ public class WatchRadarView extends View implements SensorEventListener {
         }
 
         if (allyBtnRect.contains(x, y)) {
+            int claimed = 0;
             synchronized (this) {
-                BleContact closest = null;
+                // 1. Proximity Staging Claim: Mark all unwhitelisted contacts within 8m as Friendly Squad
                 for (BleContact c : contacts.values()) {
-                    if (!c.isFriendly && (closest == null || c.distanceMeters < closest.distanceMeters)) {
-                        closest = c;
+                    if (!c.isFriendly && c.distanceMeters <= 8.0) {
+                        c.isFriendly = true;
+                        c.bearingDeg = headingDeg;
+                        friendlyWhitelist.add(c.id);
+                        claimed++;
                     }
                 }
-                if (closest != null) {
-                    closest.isFriendly = true;
-                    closest.bearingDeg = headingDeg;
-                    friendlyWhitelist.add(closest.id);
-                    vibrateWatch(70);
+                // 2. Fallback: if none <= 8m, claim the single closest unwhitelisted contact
+                if (claimed == 0) {
+                    BleContact closest = null;
+                    for (BleContact c : contacts.values()) {
+                        if (!c.isFriendly && (closest == null || c.distanceMeters < closest.distanceMeters)) {
+                            closest = c;
+                        }
+                    }
+                    if (closest != null) {
+                        closest.isFriendly = true;
+                        closest.bearingDeg = headingDeg;
+                        friendlyWhitelist.add(closest.id);
+                        claimed = 1;
+                        statusBanner = "CLAIMED " + closest.name + " (" + Math.round(closest.distanceMeters) + "m)";
+                    }
+                } else {
+                    statusBanner = "CLAIMED " + claimed + " SQUAD IN 8m";
+                }
+
+                if (claimed > 0) {
+                    saveFriendlyWhitelist();
+                    vibrateWatch(75);
+                } else if (!friendlyWhitelist.isEmpty()) {
+                    long nowTime = System.currentTimeMillis();
+                    if (nowTime - lastAllyTapTime < 2500) {
+                        friendlyWhitelist.clear();
+                        for (BleContact c : contacts.values()) {
+                            c.isFriendly = false;
+                        }
+                        saveFriendlyWhitelist();
+                        statusBanner = "ALLIES RESET (0 CLAIMED)";
+                        vibrateWatch(90);
+                    } else {
+                        lastAllyTapTime = nowTime;
+                        statusBanner = "ALL SQUAD CLAIMED (TAP TO RESET)";
+                        vibrateWatch(45);
+                    }
+                } else {
+                    statusBanner = "NO DEVICES IN RANGE";
+                    vibrateWatch(40);
                 }
             }
             return true;
@@ -1178,15 +1238,11 @@ public class WatchRadarView extends View implements SensorEventListener {
         }
 
         if (bottomClrRect.contains(x, y)) {
+            // CLR clears tactical enemy pings only (leaves friendly allies safe!)
             pings.clear();
-            friendlyWhitelist.clear();
-            synchronized (this) {
-                for (BleContact c : contacts.values()) {
-                    c.isFriendly = false;
-                }
-            }
             enemyPingArmed = false;
-            vibrateWatch(65);
+            statusBanner = "PINGS CLEARED";
+            vibrateWatch(50);
             return true;
         }
 
@@ -1209,9 +1265,12 @@ public class WatchRadarView extends View implements SensorEventListener {
                     if (c.isFriendly) {
                         friendlyWhitelist.add(c.id);
                         c.bearingDeg = headingDeg;
+                        statusBanner = c.name + " -> ALLY";
                     } else {
                         friendlyWhitelist.remove(c.id);
+                        statusBanner = c.name + " -> BOGEY";
                     }
+                    saveFriendlyWhitelist();
                     vibrateWatch(55);
                     return true;
                 }

@@ -7,6 +7,7 @@ import {
   PlusCircle,
   Info,
   Crosshair,
+  Users,
 } from 'lucide-react';
 import { BleContact, WhitelistedDevice } from '../types/radar';
 import { BleCapabilities } from '../services/bleScanner';
@@ -28,6 +29,8 @@ interface BleContactsListProps {
   onRemoveWhitelist: (deviceId: string) => void;
   onSnapContactAhead?: (deviceId: string) => void;
   onCalibrateOneMeter?: (deviceId: string) => void;
+  onOpenFriendlyRegistry?: () => void;
+  onClaimProximity?: (maxDistanceMeters: number) => number;
 }
 
 export const BleContactsList: React.FC<BleContactsListProps> = ({
@@ -46,6 +49,8 @@ export const BleContactsList: React.FC<BleContactsListProps> = ({
   onRemoveWhitelist,
   onSnapContactAhead,
   onCalibrateOneMeter,
+  onOpenFriendlyRegistry,
+  onClaimProximity,
 }) => {
   const [showCompatHelp, setShowCompatHelp] = useState(false);
   const [filterType, setFilterType] = useState<'ALL' | 'BOGEY' | 'ALLY'>('ALL');
@@ -202,6 +207,29 @@ export const BleContactsList: React.FC<BleContactsListProps> = ({
           </p>
         </div>
       )}
+
+      {/* Proximity Claim & Friendly Squad Toolbar */}
+      <div className="grid grid-cols-2 gap-1.5">
+        <button
+          type="button"
+          onClick={() => onClaimProximity?.(8)}
+          className="flex items-center justify-center gap-1.5 bg-cyan-600 hover:bg-cyan-500 text-black font-mono font-black text-[11px] py-1.5 px-2 rounded-lg shadow-[0_0_10px_rgba(34,211,238,0.35)] cursor-pointer active:scale-95 transition"
+          title="At pre-game staging, claim all devices within 8m as Friendly Squad"
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>CLAIM SQUAD (&lt;8m)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onOpenFriendlyRegistry}
+          className="flex items-center justify-center gap-1.5 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-400/50 text-emerald-200 font-mono font-bold text-[11px] py-1.5 px-2 rounded-lg cursor-pointer transition"
+          title="Open Friendly Team Registry and manual claim settings"
+        >
+          <Users className="w-3.5 h-3.5 text-cyan-400" />
+          <span>REGISTRY ({friendlyCount})</span>
+        </button>
+      </div>
 
       {/* Contacts List */}
       <div className="max-h-44 overflow-y-auto space-y-1 pr-0.5">

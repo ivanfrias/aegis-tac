@@ -26,6 +26,8 @@ import {
   ZoomIn,
   ZoomOut,
   Filter,
+  ShieldCheck,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   BleContact,
@@ -55,6 +57,7 @@ import { BleContactsList } from './components/BleContactsList';
 import { SquadPanel } from './components/SquadPanel';
 import { FieldManualModal } from './components/FieldManualModal';
 import { BleHudFilterMode, WatchHud } from './components/WatchHud';
+import { FriendlyRegistryModal } from './components/FriendlyRegistryModal';
 
 export type ScreenMode = 'BASIC' | 'WATCH' | 'ADVANCED';
 
@@ -118,7 +121,17 @@ export const App: React.FC = () => {
 
   // BLE State (Simulator OFF by default so real field use starts clean)
   const [contacts, setContacts] = useState<BleContact[]>([]);
-  const [whitelist, setWhitelist] = useState<WhitelistedDevice[]>([]);
+  const [whitelist, setWhitelist] = useState<WhitelistedDevice[]>(() => {
+    try {
+      const saved = localStorage.getItem('aegistac_friendly_whitelist');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [showRegistryModal, setShowRegistryModal] = useState<boolean>(false);
+  const [selectedContactForDetail, setSelectedContactForDetail] =
+    useState<BleContact | null>(null);
   const [isScanning, setIsScanning] = useState<boolean>(false);
   const [simEnabled, setSimEnabled] = useState<boolean>(false);
   const [bleOnlyMode, setBleOnlyMode] = useState<boolean>(false);
@@ -177,6 +190,7 @@ export const App: React.FC = () => {
       setContacts(updatedContacts);
     });
     engine.setSimulationEnabled(false);
+    engine.setWhitelist(whitelist);
     bleEngineRef.current = engine;
 
     const initialSelf: SquadMember = {
@@ -417,27 +431,96 @@ export const App: React.FC = () => {
     );
   };
 
-  const handleWhitelistContact = (contact: BleContact) => {
+  const updateWhitelistAndPersist = (nextWl: WhitelistedDevice[]) => {
+    setWhitelist(nextWl);
+    try {
+      localStorage.setItem(
+        'aegistac_friendly_whitelist',
+        JSON.stringify(nextWl)
+      );
+    } catch {
+      // ignore
+    }
+    bleEngineRef.current?.setWhitelist(nextWl);
+  };
+
+  const handleWhitelistContact = (
+    contact: BleContact,
+    customLabel?: string
+  ) => {
     const entry: WhitelistedDevice = {
       deviceId: contact.id,
-      label: `ALLY-${contact.name.slice(0, 7)}`,
+      label: customLabel || `ALLY-${contact.name.slice(0, 7)}`,
       addedBy: callsign,
     };
     const nextWl = [
       ...whitelist.filter((w) => w.deviceId !== contact.id),
       entry,
     ];
-    setWhitelist(nextWl);
-    bleEngineRef.current?.setWhitelist(nextWl);
+    updateWhitelistAndPersist(nextWl);
     p2pRef.current?.addWhitelistedDevice(entry);
     playTacticalTone(980, 70);
   };
 
   const handleRemoveWhitelist = (deviceId: string) => {
     const nextWl = whitelist.filter((w) => w.deviceId !== deviceId);
-    setWhitelist(nextWl);
-    bleEngineRef.current?.setWhitelist(nextWl);
+    updateWhitelistAndPersist(nextWl);
     p2pRef.current?.removeWhitelistedDevice(deviceId);
+    playTacticalTone(680, 50);
+  };
+
+  const handleClearAllWhitelist = () => {
+    for (const item of whitelist) {
+      p2pRef.current?.removeWhitelistedDevice(item.deviceId);
+    }
+    updateWhitelistAndPersist([]);
+    playTacticalTone(540, 90);
+  };
+
+  const handleRegisterManual = (deviceId: string, label: string) => {
+    const entry: WhitelistedDevice = {
+      deviceId,
+      label: label.trim() || `ALLY-${deviceId.slice(-4)}`,
+      addedBy: callsign,
+    };
+    const nextWl = [
+      ...whitelist.filter((w) => w.deviceId !== deviceId),
+      entry,
+    ];
+    updateWhitelistAndPersist(nextWl);
+    p2pRef.current?.addWhitelistedDevice(entry);
+    playTacticalTone(1050, 70);
+  };
+
+  const handleClaimProximity = (maxDistanceMeters: number = 8): number => {
+    const eligible = contacts.filter(
+      (c) => !c.isFriendly && c.distanceMeters <= maxDistanceMeters
+    );
+    const targets =
+      eligible.length > 0
+        ? eligible
+        : contacts.filter((c) => !c.isFriendly).slice(0, 1);
+
+    if (targets.length === 0) return 0;
+
+    const newEntries: WhitelistedDevice[] = targets.map((c) => ({
+      deviceId: c.id,
+      label: `ALLY-${c.name.slice(0, 7)}`,
+      addedBy: callsign,
+    }));
+
+    const targetIds = new Set(targets.map((t) => t.id));
+    const nextWl = [
+      ...whitelist.filter((w) => !targetIds.has(w.deviceId)),
+      ...newEntries,
+    ];
+    updateWhitelistAndPersist(nextWl);
+    for (const entry of newEntries) {
+      p2pRef.current?.addWhitelistedDevice(entry);
+    }
+    playTacticalTone(1100, 75);
+    setTimeout(() => playTacticalTone(1480, 95), 85);
+    return targets.length;
   };
 
   const handleStatusChange = (nextStatus: PlayerStatus) => {
@@ -781,6 +864,10 @@ export const App: React.FC = () => {
           simEnabled={simEnabled}
           bleOnlyMode={bleOnlyMode}
           playerStatus={playerStatus}
+          whitelistCount={whitelist.length}
+          onClaimProximity={handleClaimProximity}
+          onOpenFriendlyRegistry={() => setShowRegistryModal(true)}
+          onSelectContact={(c) => setSelectedContactForDetail(c)}
           onStartScan={handleStartPassiveScan}
           onStopScan={handleStopScan}
           onCycleBleFilter={handleCycleBleFilter}
@@ -861,6 +948,44 @@ export const App: React.FC = () => {
             </button>
           </div>
 
+          {/* Staging Proximity Claim & Friendly Squad Strip */}
+          <div className="flex items-center justify-between gap-1.5 bg-[#091f13] border border-cyan-500/35 px-2.5 py-1.5 rounded-xl">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0" />
+              <span className="font-mono text-xs font-bold text-cyan-200 truncate">
+                TEAM: {whitelist.length} ALLIES
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0 font-mono text-[10px]">
+              <button
+                type="button"
+                onClick={() => {
+                  const claimed = handleClaimProximity(8);
+                  if (claimed > 0) {
+                    setScanStatusText(
+                      `Claimed ${claimed} nearby device(s) as Friendly Squad!`
+                    );
+                  } else {
+                    setShowRegistryModal(true);
+                  }
+                }}
+                className="px-2.5 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-black font-extrabold flex items-center gap-1 cursor-pointer active:scale-95 transition shadow"
+                title="At staging, 1-tap claim all devices within 8m as Friendly Squad"
+              >
+                <span>CLAIM &lt;8m</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowRegistryModal(true)}
+                className="px-2 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-400/40 text-emerald-300 font-bold cursor-pointer"
+                title="Open Friendly Team Registry and manual claim settings"
+              >
+                REGISTRY
+              </button>
+            </div>
+          </div>
+
           {/* Centerpiece: 360° Tactical Radar + Floating Quick Toggles */}
           <div className="relative flex-1 flex flex-col items-center justify-center min-h-0">
             <div className="w-full max-w-[310px] sm:max-w-[360px] mx-auto">
@@ -879,6 +1004,7 @@ export const App: React.FC = () => {
                 activePingTool={activePingTool}
                 onRadarTapPing={handleRadarTapPing}
                 onRemovePing={handleRemovePing}
+                onSelectContact={(c) => setSelectedContactForDetail(c)}
               />
             </div>
 
@@ -1103,6 +1229,7 @@ export const App: React.FC = () => {
                 activePingTool={activePingTool}
                 onRadarTapPing={handleRadarTapPing}
                 onRemovePing={handleRemovePing}
+                onSelectContact={(c) => setSelectedContactForDetail(c)}
               />
             </div>
 
@@ -1249,6 +1376,8 @@ export const App: React.FC = () => {
                   bleEngineRef.current?.calibrateContactAtOneMeter(deviceId);
                   playTacticalTone(1300, 70);
                 }}
+                onOpenFriendlyRegistry={() => setShowRegistryModal(true)}
+                onClaimProximity={handleClaimProximity}
               />
             )}
 
@@ -1488,6 +1617,160 @@ export const App: React.FC = () => {
               >
                 GOT IT
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Friendly Squad Registry & Proximity Claim Modal */}
+      <FriendlyRegistryModal
+        isOpen={showRegistryModal}
+        onClose={() => setShowRegistryModal(false)}
+        contacts={contacts}
+        whitelist={whitelist}
+        callsign={callsign}
+        onClaimProximity={handleClaimProximity}
+        onWhitelistContact={handleWhitelistContact}
+        onRemoveWhitelist={handleRemoveWhitelist}
+        onClearAllWhitelist={handleClearAllWhitelist}
+        onRegisterManual={handleRegisterManual}
+        onCalibrateOneMeter={(id) => {
+          bleEngineRef.current?.calibrateContactAtOneMeter(id);
+          playTacticalTone(1300, 70);
+        }}
+        onSnapContactAhead={(id) => {
+          bleEngineRef.current?.snapContactToCurrentHeading(id);
+          playTacticalTone(1100, 60);
+        }}
+      />
+
+      {/* Quick Tap Inspector for Radar Blips */}
+      {selectedContactForDetail && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 select-none">
+          <div className="w-full max-w-xs bg-[#07180f] border border-cyan-400/60 rounded-2xl p-3.5 shadow-[0_0_40px_rgba(34,211,238,0.35)] space-y-3 font-mono">
+            <div className="flex items-center justify-between border-b border-emerald-500/25 pb-2">
+              <div className="flex items-center gap-2">
+                <div
+                  className={`w-3.5 h-3.5 rotate-45 shrink-0 ${
+                    selectedContactForDetail.isFriendly
+                      ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]'
+                      : 'bg-amber-400'
+                  }`}
+                />
+                <div className="font-extrabold text-sm text-emerald-100 truncate">
+                  {selectedContactForDetail.assignedCallsign ||
+                    selectedContactForDetail.name}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedContactForDetail(null)}
+                className="text-emerald-400 hover:text-white p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs text-emerald-300/80 bg-black/40 p-2 rounded-xl border border-emerald-500/20">
+              <div>
+                <span className="text-[10px] text-emerald-500 block">
+                  DISTANCE
+                </span>
+                <span className="font-bold text-sm text-emerald-100">
+                  {selectedContactForDetail.distanceMeters}m
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-emerald-500 block">
+                  SIGNAL (RSSI)
+                </span>
+                <span className="font-bold text-sm text-emerald-100">
+                  {selectedContactForDetail.smoothedRssi} dBm
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-emerald-500 block">
+                  BEARING
+                </span>
+                <span className="font-bold text-emerald-100">
+                  {Math.round(selectedContactForDetail.estimatedBearingDeg)}°
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-emerald-500 block">
+                  STATUS
+                </span>
+                <span
+                  className={`font-bold ${
+                    selectedContactForDetail.isFriendly
+                      ? 'text-cyan-400'
+                      : 'text-amber-400'
+                  }`}
+                >
+                  {selectedContactForDetail.isFriendly
+                    ? 'FRIENDLY ALLY'
+                    : 'UNKNOWN BOGEY'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              {!selectedContactForDetail.isFriendly ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleWhitelistContact(selectedContactForDetail);
+                    setSelectedContactForDetail(null);
+                  }}
+                  className="w-full py-2 px-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-black text-xs flex items-center justify-center gap-1.5 shadow cursor-pointer active:scale-95 transition"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>MARK AS FRIENDLY ALLY</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleRemoveWhitelist(selectedContactForDetail.id);
+                    setSelectedContactForDetail(null);
+                  }}
+                  className="w-full py-2 px-3 rounded-xl bg-red-950/80 hover:bg-red-900 border border-red-500/50 text-red-200 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition"
+                >
+                  <ShieldAlert className="w-4 h-4" />
+                  <span>UNMARK (SET TO BOGEY)</span>
+                </button>
+              )}
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    bleEngineRef.current?.calibrateContactAtOneMeter(
+                      selectedContactForDetail.id
+                    );
+                    playTacticalTone(1300, 70);
+                    setSelectedContactForDetail(null);
+                  }}
+                  className="py-1.5 px-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/35 border border-amber-400/50 text-amber-200 text-xs font-bold cursor-pointer"
+                  title="Calibrate 1m distance"
+                >
+                  1m CALIBRATE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    bleEngineRef.current?.snapContactToCurrentHeading(
+                      selectedContactForDetail.id
+                    );
+                    playTacticalTone(1100, 60);
+                    setSelectedContactForDetail(null);
+                  }}
+                  className="py-1.5 px-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/35 border border-emerald-400/50 text-emerald-200 text-xs font-bold cursor-pointer"
+                  title="Align direction ahead"
+                >
+                  AIM SNAP
+                </button>
+              </div>
             </div>
           </div>
         </div>
