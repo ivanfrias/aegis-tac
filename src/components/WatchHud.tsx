@@ -22,6 +22,7 @@ import {
   TacticalPing,
 } from '../types/radar';
 import { RadarDisplay } from './RadarDisplay';
+import { APP_VERSION } from '../version';
 
 export type BleHudFilterMode = 'TOP_5' | 'ALL' | 'NONE';
 
@@ -344,7 +345,7 @@ export const WatchHud: React.FC<WatchHudProps> = ({
         {/* 6 O'CLOCK BEZEL: Version & Editable Callsign */}
         <div className="absolute bottom-9 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 whitespace-nowrap">
           <span className="text-[8px] font-mono font-extrabold text-emerald-400/60 tracking-wider">
-            AEGIS TAC • v1.2.0
+            AEGIS TAC • {APP_VERSION}
           </span>
           {callsign && (
             <button

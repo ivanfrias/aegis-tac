@@ -61,6 +61,7 @@ import { BleHudFilterMode, WatchHud } from './components/WatchHud';
 import { FriendlyRegistryModal } from './components/FriendlyRegistryModal';
 import { CallsignModal } from './components/CallsignModal';
 import { fuseDevices } from './services/deviceFusion';
+import { APP_VERSION } from './version';
 
 export type ScreenMode = 'BASIC' | 'WATCH' | 'ADVANCED';
 
@@ -777,7 +778,7 @@ export const App: React.FC = () => {
             <div className="min-w-0">
               <div className="font-mono text-xs font-extrabold tracking-wider text-emerald-300 flex items-center gap-1.5 truncate">
                 <span className="truncate">AEGIS TAC</span>
-                <span className="text-[9px] font-mono text-emerald-400/60 font-semibold">v1.2.0</span>
+                <span className="text-[9px] font-mono text-emerald-400/60 font-semibold">{APP_VERSION}</span>
                 <button
                   type="button"
                   onClick={() => setShowCallsignModal(true)}

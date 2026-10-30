@@ -129,8 +129,8 @@ public class WatchRadarView extends View implements SensorEventListener {
     private boolean headUpMode = true;
     private boolean enemyPingArmed = false;
 
-    public static final String APP_VERSION = "v1.2.0";
-    public static final int APP_BUILD = 2;
+    public static final String APP_VERSION = "v1.3.0";
+    public static final int APP_BUILD = 3;
 
     // Default to TOP_5 so swarmed environments stay clean and readable
     private FilterMode filterMode = FilterMode.TOP_5;
