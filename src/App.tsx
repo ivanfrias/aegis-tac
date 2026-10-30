@@ -62,6 +62,7 @@ import { FriendlyRegistryModal } from './components/FriendlyRegistryModal';
 import { CallsignModal } from './components/CallsignModal';
 import { fuseDevices } from './services/deviceFusion';
 import { APP_VERSION } from './version';
+import { TacticalCamoBackground } from './components/TacticalCamoBackground';
 
 export type ScreenMode = 'BASIC' | 'WATCH' | 'ADVANCED';
 
@@ -764,7 +765,9 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-dvh w-full bg-[#050b07] text-emerald-100 flex flex-col select-none">
+    <div className="relative min-h-dvh w-full bg-[#040906] text-emerald-100 flex flex-col select-none overflow-x-hidden">
+      {/* Tactical Camo Background across Black Zones (Smartphones & Tablets) */}
+      <TacticalCamoBackground opacity={0.65} />
       {/* Top Telemetry Bar */}
       <header className="sticky top-0 z-30 bg-[#07120c]/95 backdrop-blur border-b border-emerald-500/25 px-3 py-2 flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">

@@ -23,6 +23,7 @@ import {
 } from '../types/radar';
 import { RadarDisplay } from './RadarDisplay';
 import { APP_VERSION } from '../version';
+import { TacticalCamoBackground } from './TacticalCamoBackground';
 
 export type BleHudFilterMode = 'TOP_5' | 'ALL' | 'NONE';
 
@@ -142,11 +143,32 @@ export const WatchHud: React.FC<WatchHudProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-40 bg-black flex flex-col items-center justify-center overflow-hidden select-none"
+      className="fixed inset-0 z-40 bg-[#040906] flex flex-col items-center justify-center overflow-hidden select-none"
       onWheel={handleWheel}
     >
-      {/* Circular Smartwatch Bezel Frame (Fits 100% edge-to-edge on Galaxy Watch 5, or renders a circular watch dial on Phone/Desktop) */}
-      <div className="relative w-[min(100dvw,100dvh,420px)] h-[min(100dvw,100dvh,420px)] rounded-full bg-[#040a06] border-4 border-emerald-500/40 shadow-[0_0_40px_rgba(16,185,129,0.22)] flex items-center justify-center overflow-hidden">
+      {/* Tactical Military Camouflage Background for Black Zones (Smartphones & Tablets) */}
+      <TacticalCamoBackground opacity={0.9} showVignette={true} />
+
+      {/* Tactical Corner Brackets for Tablet / Smartphone View */}
+      <div className="absolute top-3 left-4 z-10 hidden sm:flex items-center gap-1.5 pointer-events-none opacity-40 text-emerald-400 font-mono text-[9px] tracking-widest">
+        <span className="w-2.5 h-2.5 border-t-2 border-l-2 border-emerald-400"></span>
+        <span>CAMO-TAC // MOUNT</span>
+      </div>
+      <div className="absolute top-3 right-4 z-10 hidden sm:flex items-center gap-1.5 pointer-events-none opacity-40 text-emerald-400 font-mono text-[9px] tracking-widest">
+        <span>AEGIS-TAC-OS</span>
+        <span className="w-2.5 h-2.5 border-t-2 border-r-2 border-emerald-400"></span>
+      </div>
+      <div className="absolute bottom-3 left-4 z-10 hidden sm:flex items-center gap-1.5 pointer-events-none opacity-40 text-emerald-400 font-mono text-[9px] tracking-widest">
+        <span className="w-2.5 h-2.5 border-b-2 border-l-2 border-emerald-400"></span>
+        <span>MIL-SPEC // 360°</span>
+      </div>
+      <div className="absolute bottom-3 right-4 z-10 hidden sm:flex items-center gap-1.5 pointer-events-none opacity-40 text-emerald-400 font-mono text-[9px] tracking-widest">
+        <span>FIELD-HUD</span>
+        <span className="w-2.5 h-2.5 border-b-2 border-r-2 border-emerald-400"></span>
+      </div>
+
+      {/* Circular Smartwatch Bezel Frame (Fits 100% edge-to-edge on Galaxy Watch 5, or renders a circular watch dial on Phone/Tablet) */}
+      <div className="relative w-[min(100dvw,100dvh,420px)] h-[min(100dvw,100dvh,420px)] rounded-full bg-[#040a06] border-4 border-emerald-500/40 shadow-[0_0_50px_rgba(0,0,0,0.9),0_0_30px_rgba(16,185,129,0.22)] flex items-center justify-center overflow-hidden">
         {/* Full-Bleed 360° Radar Canvas */}
         <div className="w-full h-full flex items-center justify-center p-1">
           <RadarDisplay

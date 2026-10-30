@@ -129,8 +129,8 @@ public class WatchRadarView extends View implements SensorEventListener {
     private boolean headUpMode = true;
     private boolean enemyPingArmed = false;
 
-    public static final String APP_VERSION = "v1.3.0";
-    public static final int APP_BUILD = 3;
+    public static final String APP_VERSION = "v1.3.1";
+    public static final int APP_BUILD = 4;
 
     // Default to TOP_5 so swarmed environments stay clean and readable
     private FilterMode filterMode = FilterMode.TOP_5;
@@ -756,8 +756,23 @@ public class WatchRadarView extends View implements SensorEventListener {
         float minDim = Math.min(w, h);
         float outerRadius = minDim * 0.40f;
 
-        // 1. Deep Tactical Dark Background
-        canvas.drawColor(Color.parseColor("#040a06"));
+        // 1. Deep Tactical Dark Background with Camo Accents on Tablets/Phones
+        canvas.drawColor(Color.parseColor("#040906"));
+
+        if (w > minDim || h > minDim) {
+            Paint camoPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            camoPaint.setStyle(Paint.Style.FILL);
+            camoPaint.setColor(Color.argb(45, 14, 31, 19));
+            canvas.drawCircle(0, 0, minDim * 0.45f, camoPaint);
+            canvas.drawCircle(w, 0, minDim * 0.45f, camoPaint);
+            canvas.drawCircle(0, h, minDim * 0.45f, camoPaint);
+            canvas.drawCircle(w, h, minDim * 0.45f, camoPaint);
+            camoPaint.setColor(Color.argb(35, 26, 56, 35));
+            canvas.drawCircle(w * 0.18f, h * 0.12f, minDim * 0.28f, camoPaint);
+            canvas.drawCircle(w * 0.82f, h * 0.88f, minDim * 0.28f, camoPaint);
+            canvas.drawCircle(w * 0.12f, h * 0.85f, minDim * 0.22f, camoPaint);
+            canvas.drawCircle(w * 0.88f, h * 0.15f, minDim * 0.22f, camoPaint);
+        }
 
         RadialGradient bgGrad = new RadialGradient(
                 cx, cy, outerRadius,
