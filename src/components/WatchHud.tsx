@@ -31,6 +31,8 @@ interface WatchHudProps {
   bleFilterMode: BleHudFilterMode;
   squadMembers: SquadMember[];
   selfPeerId: string;
+  callsign: string;
+  onEditCallsign?: () => void;
   pings: TacticalPing[];
   selfLat: number | null;
   selfLng: number | null;
@@ -72,6 +74,8 @@ export const WatchHud: React.FC<WatchHudProps> = ({
   bleFilterMode,
   squadMembers,
   selfPeerId,
+  callsign,
+  onEditCallsign,
   pings,
   selfLat,
   selfLng,
@@ -106,7 +110,12 @@ export const WatchHud: React.FC<WatchHudProps> = ({
   onExitWatchMode,
   onQuitApp,
 }) => {
-  const closestBogey = contacts.find((c) => !c.isFriendly);
+  const closestBogey = contacts.find(
+    (c) =>
+      !c.isFriendly &&
+      c.affiliation !== 'SQUAD' &&
+      c.affiliation !== 'FRIENDLY'
+  );
   const [zoomToast, setZoomToast] = React.useState<string | null>(null);
   const toastTimeoutRef = React.useRef<number | null>(null);
   const lastWheelTime = React.useRef<number>(0);
@@ -332,11 +341,22 @@ export const WatchHud: React.FC<WatchHudProps> = ({
           </button>
         </div>
 
-        {/* 6 O'CLOCK BEZEL: Version & Controls */}
-        <div className="absolute bottom-9 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
+        {/* 6 O'CLOCK BEZEL: Version & Editable Callsign */}
+        <div className="absolute bottom-9 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 whitespace-nowrap">
           <span className="text-[8px] font-mono font-extrabold text-emerald-400/60 tracking-wider">
             AEGIS TAC • v1.2.0
           </span>
+          {callsign && (
+            <button
+              type="button"
+              onClick={onEditCallsign}
+              className="text-[8px] font-mono font-extrabold text-emerald-300 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-400/50 px-1.5 py-0.5 rounded-full cursor-pointer transition active:scale-95 flex items-center gap-0.5"
+              title="Tap to change your Callsign / Name live"
+            >
+              <span>🏷</span>
+              <span>{callsign}</span>
+            </button>
+          )}
         </div>
 
         {/* ===============================================================

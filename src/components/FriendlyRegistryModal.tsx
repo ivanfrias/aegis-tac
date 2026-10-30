@@ -21,11 +21,11 @@ interface FriendlyRegistryModalProps {
   contacts: BleContact[];
   whitelist: WhitelistedDevice[];
   callsign: string;
-  onClaimProximity: (maxDistanceMeters: number) => number;
-  onWhitelistContact: (contact: BleContact, customLabel?: string) => void;
+  onClaimProximity: (maxDistanceMeters: number, affiliation?: 'SQUAD' | 'FRIENDLY') => number;
+  onWhitelistContact: (contact: BleContact, customLabel?: string, affiliation?: 'SQUAD' | 'FRIENDLY') => void;
   onRemoveWhitelist: (deviceId: string) => void;
   onClearAllWhitelist: () => void;
-  onRegisterManual: (deviceId: string, label: string) => void;
+  onRegisterManual: (deviceId: string, label: string, affiliation?: 'SQUAD' | 'FRIENDLY') => void;
   onCalibrateOneMeter?: (deviceId: string) => void;
   onSnapContactAhead?: (deviceId: string) => void;
 }
@@ -58,38 +58,50 @@ export const FriendlyRegistryModal: React.FC<FriendlyRegistryModalProps> = ({
     setTimeout(() => setToastMessage(null), 2500);
   };
 
-  const handleQuickClaim = (distMeters: number) => {
-    const claimedCount = onClaimProximity(distMeters);
+  const handleQuickClaim = (distMeters: number, aff: 'SQUAD' | 'FRIENDLY' = 'SQUAD') => {
+    const claimedCount = onClaimProximity(distMeters, aff);
     if (claimedCount > 0) {
-      showToast(`✔ Claimed ${claimedCount} device${claimedCount > 1 ? 's' : ''} within ${distMeters}m as Friendly Squad!`);
+      showToast(`✔ Claimed ${claimedCount} device${claimedCount > 1 ? 's' : ''} within ${distMeters}m as ${aff === 'SQUAD' ? 'Squad (Green)' : 'Friendly Foe (Blue)'}!`);
     } else {
       showToast(`No new devices within ${distMeters}m (all nearby already claimed).`);
     }
   };
 
-  const handleManualAdd = (e: React.FormEvent) => {
+  const handleManualAdd = (e: React.FormEvent, aff: 'SQUAD' | 'FRIENDLY' = 'FRIENDLY') => {
     e.preventDefault();
     const idTrim = manualId.trim();
     if (!idTrim) return;
     const labelTrim = manualCallsign.trim() || `ALLY-${idTrim.slice(-4)}`;
-    onRegisterManual(idTrim, labelTrim);
+    onRegisterManual(idTrim, labelTrim, aff);
     setManualId('');
     setManualCallsign('');
-    showToast(`Registered "${labelTrim}" as Friendly.`);
+    showToast(`Registered "${labelTrim}" as ${aff}.`);
   };
 
   const handleSaveRename = (deviceId: string) => {
     const contact = contacts.find((c) => c.id === deviceId);
+    const existingWl = whitelist.find((w) => w.deviceId === deviceId);
     const trimmed = editLabelText.trim();
     if (trimmed) {
       if (contact) {
-        onWhitelistContact(contact, trimmed);
+        onWhitelistContact(contact, trimmed, existingWl?.affiliation || 'FRIENDLY');
       } else {
-        onRegisterManual(deviceId, trimmed);
+        onRegisterManual(deviceId, trimmed, existingWl?.affiliation || 'FRIENDLY');
       }
       showToast(`Updated callsign to "${trimmed}".`);
     }
     setEditingDeviceId(null);
+  };
+
+  const handleToggleAffiliation = (entry: WhitelistedDevice) => {
+    const nextAff = entry.affiliation === 'SQUAD' ? 'FRIENDLY' : 'SQUAD';
+    const contact = contacts.find((c) => c.id === entry.deviceId);
+    if (contact) {
+      onWhitelistContact(contact, entry.label, nextAff);
+    } else {
+      onRegisterManual(entry.deviceId, entry.label, nextAff);
+    }
+    showToast(`Switched "${entry.label}" to ${nextAff === 'SQUAD' ? 'Squad (Green)' : 'Friendly Foe (Blue)'}.`);
   };
 
   const eligibleWithin5m = contacts.filter((c) => !c.isFriendly && c.distanceMeters <= 5).length;
@@ -240,10 +252,16 @@ export const FriendlyRegistryModal: React.FC<FriendlyRegistryModalProps> = ({
                   return (
                     <div
                       key={w.deviceId}
-                      className="flex items-center justify-between gap-2 p-2 rounded-xl bg-[#092014] border border-cyan-500/40 font-mono text-xs"
+                      className="flex items-center justify-between gap-2 p-2 rounded-xl bg-[#092014] border border-emerald-500/40 font-mono text-xs"
                     >
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <div className="w-3.5 h-3.5 rotate-45 bg-cyan-400 shrink-0 shadow-[0_0_6px_rgba(34,211,238,0.7)]" />
+                        <div
+                          className={`w-3.5 h-3.5 rotate-45 shrink-0 ${
+                            w.affiliation === 'SQUAD'
+                              ? 'bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.7)]'
+                              : 'bg-blue-400 shadow-[0_0_6px_rgba(59,130,246,0.7)]'
+                          }`}
+                        />
                         
                         {isEditing ? (
                           <div className="flex items-center gap-1 flex-1">
@@ -251,7 +269,7 @@ export const FriendlyRegistryModal: React.FC<FriendlyRegistryModalProps> = ({
                               type="text"
                               value={editLabelText}
                               onChange={(e) => setEditLabelText(e.target.value)}
-                              className="bg-black/80 border border-cyan-400 px-1.5 py-0.5 rounded text-cyan-200 text-xs font-bold w-full"
+                              className="bg-black/80 border border-emerald-400 px-1.5 py-0.5 rounded text-emerald-200 text-xs font-bold w-full"
                               autoFocus
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') handleSaveRename(w.deviceId);
@@ -261,14 +279,14 @@ export const FriendlyRegistryModal: React.FC<FriendlyRegistryModalProps> = ({
                             <button
                               type="button"
                               onClick={() => handleSaveRename(w.deviceId)}
-                              className="p-1 rounded bg-cyan-500 text-black cursor-pointer"
+                              className="p-1 rounded bg-emerald-500 text-black cursor-pointer"
                             >
                               <Check className="w-3 h-3" />
                             </button>
                           </div>
                         ) : (
                           <div className="min-w-0">
-                            <div className="font-bold text-cyan-200 truncate flex items-center gap-1.5">
+                            <div className="font-bold text-emerald-200 truncate flex items-center gap-1.5">
                               <span className="truncate">{w.label}</span>
                               <button
                                 type="button"
@@ -276,7 +294,7 @@ export const FriendlyRegistryModal: React.FC<FriendlyRegistryModalProps> = ({
                                   setEditingDeviceId(w.deviceId);
                                   setEditLabelText(w.label);
                                 }}
-                                className="text-[10px] text-cyan-400/60 hover:text-cyan-200 cursor-pointer"
+                                className="text-[10px] text-emerald-400/60 hover:text-emerald-200 cursor-pointer"
                                 title="Rename Callsign"
                               >
                                 ✎
@@ -293,6 +311,19 @@ export const FriendlyRegistryModal: React.FC<FriendlyRegistryModalProps> = ({
                       </div>
 
                       <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleAffiliation(w)}
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer transition ${
+                            w.affiliation === 'SQUAD'
+                              ? 'bg-emerald-500/20 hover:bg-emerald-500/35 border-emerald-400/60 text-emerald-300'
+                              : 'bg-blue-500/20 hover:bg-blue-500/35 border-blue-400/60 text-blue-300'
+                          }`}
+                          title="Toggle between Squad (Green) and Friendly Foe (Blue)"
+                        >
+                          {w.affiliation === 'SQUAD' ? '🛡 SQUAD' : '🔷 ALLY'}
+                        </button>
+
                         {activeContact && onSnapContactAhead && (
                           <button
                             type="button"
@@ -323,7 +354,7 @@ export const FriendlyRegistryModal: React.FC<FriendlyRegistryModalProps> = ({
           </div>
 
           {/* ===============================================================
-              3. UNCLAIMED NEARBY DEVICES (1-Tap Mark as Ally)
+              3. UNCLAIMED NEARBY DEVICES (1-Tap Mark as Squad or Ally)
              =============================================================== */}
           {contacts.filter((c) => !c.isFriendly).length > 0 && (
             <div className="space-y-1.5">
@@ -362,12 +393,25 @@ export const FriendlyRegistryModal: React.FC<FriendlyRegistryModalProps> = ({
                         <button
                           type="button"
                           onClick={() => {
-                            onWhitelistContact(c);
-                            showToast(`Claimed "${c.name}" as Ally.`);
+                            onWhitelistContact(c, undefined, 'SQUAD');
+                            showToast(`Claimed "${c.name}" as Squad (Green).`);
                           }}
-                          className="px-2 py-0.5 rounded bg-cyan-600 hover:bg-cyan-500 text-black border border-cyan-300 text-[10px] font-bold cursor-pointer"
+                          className="px-1.5 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-black border border-emerald-300 text-[10px] font-black cursor-pointer"
+                          title="Claim as Squad Member (Green)"
                         >
-                          + CLAIM ALLY
+                          +SQUAD
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onWhitelistContact(c, undefined, 'FRIENDLY');
+                            showToast(`Claimed "${c.name}" as Friendly Foe (Blue).`);
+                          }}
+                          className="px-1.5 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-white border border-blue-300 text-[10px] font-bold cursor-pointer"
+                          title="Claim as Friendly Foe (Blue)"
+                        >
+                          +ALLY
                         </button>
                       </div>
                     </div>

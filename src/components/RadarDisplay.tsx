@@ -342,7 +342,7 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = (props) => {
           ctx.stroke();
           ctx.restore();
 
-          // 6. Render BLE Contacts (with anti-overlap label placement)
+          // 6. Render BLE Contacts (with anti-overlap label placement and 3-tier colors)
           const pulse = 0.55 + 0.45 * Math.sin(now / 260);
           const occupiedLabelBoxes: Array<{
             x1: number;
@@ -350,6 +350,7 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = (props) => {
             x2: number;
             y2: number;
           }> = [];
+          const renderedSquadMemberCallsigns = new Set<string>();
 
           const drawDeoverlappedTag = (
             anchorX: number,
@@ -406,18 +407,137 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = (props) => {
               p.headUpMode,
               safeHeading
             );
+            const halfSpreadRad =
+              ((contact.arcSpreadDeg / 2) * Math.PI) / 180;
 
-            if (!contact.isFriendly) {
-              const halfSpreadRad =
-                ((contact.arcSpreadDeg / 2) * Math.PI) / 180;
+            const trendSymbol =
+              contact.trend === 'APPROACHING'
+                ? '▲'
+                : contact.trend === 'RECEDING'
+                ? '▼'
+                : '•';
+            const fusedBadge =
+              contact.fusedDeviceCount && contact.fusedDeviceCount > 1
+                ? ' [📱⌚]'
+                : '';
+
+            const affiliation =
+              contact.affiliation ||
+              (contact.isFriendly ? 'FRIENDLY' : 'BOGEY');
+
+            if (affiliation === 'SQUAD') {
+              // 1. SQUAD MEMBERS: GREEN with green proximity arc
+              if (contact.assignedCallsign) {
+                renderedSquadMemberCallsigns.add(
+                  contact.assignedCallsign.trim().toUpperCase()
+                );
+              }
+              const greenGlow = `rgba(16, 185, 129, ${0.28 * pulse})`;
+              const greenSolid = 'rgba(52, 211, 153, 0.95)';
+
+              ctx.strokeStyle = greenGlow;
+              ctx.lineWidth = 10;
+              ctx.lineCap = 'round';
+              ctx.beginPath();
+              ctx.arc(
+                cx,
+                cy,
+                radiusPx,
+                centerRad - halfSpreadRad,
+                centerRad + halfSpreadRad
+              );
+              ctx.stroke();
+
+              ctx.strokeStyle = greenSolid;
+              ctx.lineWidth = 3;
+              ctx.beginPath();
+              ctx.arc(
+                cx,
+                cy,
+                radiusPx,
+                centerRad - halfSpreadRad,
+                centerRad + halfSpreadRad
+              );
+              ctx.stroke();
+
+              const fx = cx + Math.cos(centerRad) * radiusPx;
+              const fy = cy + Math.sin(centerRad) * radiusPx;
+
+              ctx.save();
+              ctx.translate(fx, fy);
+              ctx.rotate(Math.PI / 4);
+              ctx.fillStyle = '#10b981';
+              ctx.strokeStyle = '#a7f3d0';
+              ctx.lineWidth = 1.5;
+              ctx.fillRect(-5, -5, 10, 10);
+              ctx.strokeRect(-5, -5, 10, 10);
+              ctx.restore();
+
+              const label = contact.assignedCallsign || contact.name;
+              const shortLabel = label.length > 8 ? label.slice(0, 8) : label;
+              drawDeoverlappedTag(
+                fx,
+                fy,
+                `🛡 ${trendSymbol} ${shortLabel}${fusedBadge} ${contact.distanceMeters}m`,
+                '#6ee7b7'
+              );
+            } else if (affiliation === 'FRIENDLY') {
+              // 2. FRIENDLY FOES (Non-Squad Allies): BLUE with blue proximity arc
+              const blueGlow = `rgba(59, 130, 246, ${0.28 * pulse})`;
+              const blueSolid = 'rgba(96, 165, 250, 0.95)';
+
+              ctx.strokeStyle = blueGlow;
+              ctx.lineWidth = 10;
+              ctx.lineCap = 'round';
+              ctx.beginPath();
+              ctx.arc(
+                cx,
+                cy,
+                radiusPx,
+                centerRad - halfSpreadRad,
+                centerRad + halfSpreadRad
+              );
+              ctx.stroke();
+
+              ctx.strokeStyle = blueSolid;
+              ctx.lineWidth = 3;
+              ctx.beginPath();
+              ctx.arc(
+                cx,
+                cy,
+                radiusPx,
+                centerRad - halfSpreadRad,
+                centerRad + halfSpreadRad
+              );
+              ctx.stroke();
+
+              const bx = cx + Math.cos(centerRad) * radiusPx;
+              const by = cy + Math.sin(centerRad) * radiusPx;
+
+              ctx.save();
+              ctx.translate(bx, by);
+              ctx.rotate(Math.PI / 4);
+              ctx.fillStyle = '#3b82f6';
+              ctx.strokeStyle = '#bfdbfe';
+              ctx.lineWidth = 1.5;
+              ctx.fillRect(-5, -5, 10, 10);
+              ctx.strokeRect(-5, -5, 10, 10);
+              ctx.restore();
+
+              const label = contact.assignedCallsign || contact.name;
+              const shortLabel = label.length > 8 ? label.slice(0, 8) : label;
+              drawDeoverlappedTag(
+                bx,
+                by,
+                `🔷 ${trendSymbol} ${shortLabel}${fusedBadge} ${contact.distanceMeters}m`,
+                '#93c5fd'
+              );
+            } else {
+              // 3. ENEMIES / BOGEYS: RED when close (<= 12m) and ORANGE when far (> 12m)
               const isCloseDanger = contact.distanceMeters <= 12;
-              const isMediumWarning = contact.distanceMeters <= 28;
-
               const baseRgb = isCloseDanger
-                ? '239, 68, 68'
-                : isMediumWarning
-                ? '245, 158, 11'
-                : '234, 179, 8';
+                ? '239, 68, 68' // RED <= 12m
+                : '249, 115, 22'; // ORANGE > 12m
 
               ctx.strokeStyle = `rgba(${baseRgb}, ${0.22 * pulse})`;
               ctx.lineWidth = 10;
@@ -444,93 +564,34 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = (props) => {
               );
               ctx.stroke();
 
-              const bx = cx + Math.cos(centerRad) * radiusPx;
-              const by = cy + Math.sin(centerRad) * radiusPx;
+              const ex = cx + Math.cos(centerRad) * radiusPx;
+              const ey = cy + Math.sin(centerRad) * radiusPx;
 
               ctx.fillStyle = `rgb(${baseRgb})`;
               ctx.beginPath();
-              ctx.arc(bx, by, 4.5, 0, Math.PI * 2);
+              ctx.arc(ex, ey, 4.5, 0, Math.PI * 2);
               ctx.fill();
 
-              const trendSymbol =
-                contact.trend === 'APPROACHING'
-                  ? '▲'
-                  : contact.trend === 'RECEDING'
-                  ? '▼'
-                  : '•';
               const shortLabel =
-                contact.name.length > 9
-                  ? contact.name.slice(0, 9)
+                contact.name.length > 8
+                  ? contact.name.slice(0, 8)
                   : contact.name;
-              const tagText = `${trendSymbol} ${shortLabel} ${contact.distanceMeters}m`;
-              drawDeoverlappedTag(bx, by, tagText, `rgb(${baseRgb})`);
-            } else {
-              // FRIENDLY UNIT: Marked as Green with directional proximity arc
-              const halfSpreadRad =
-                ((contact.arcSpreadDeg / 2) * Math.PI) / 180;
-              const greenRgb = '52, 211, 153'; // Emerald Green #34d399
-
-              // Outer glowing soft arc
-              ctx.strokeStyle = `rgba(${greenRgb}, ${0.28 * pulse})`;
-              ctx.lineWidth = 10;
-              ctx.lineCap = 'round';
-              ctx.beginPath();
-              ctx.arc(
-                cx,
-                cy,
-                radiusPx,
-                centerRad - halfSpreadRad,
-                centerRad + halfSpreadRad
-              );
-              ctx.stroke();
-
-              // Solid crisp green arc
-              ctx.strokeStyle = `rgba(${greenRgb}, 0.95)`;
-              ctx.lineWidth = 3;
-              ctx.beginPath();
-              ctx.arc(
-                cx,
-                cy,
-                radiusPx,
-                centerRad - halfSpreadRad,
-                centerRad + halfSpreadRad
-              );
-              ctx.stroke();
-
-              const fx = cx + Math.cos(centerRad) * radiusPx;
-              const fy = cy + Math.sin(centerRad) * radiusPx;
-
-              // Solid green diamond node at bearing center
-              ctx.save();
-              ctx.translate(fx, fy);
-              ctx.rotate(Math.PI / 4);
-              ctx.fillStyle = '#10b981';
-              ctx.strokeStyle = '#a7f3d0';
-              ctx.lineWidth = 1.5;
-              ctx.fillRect(-5, -5, 10, 10);
-              ctx.strokeRect(-5, -5, 10, 10);
-              ctx.restore();
-
-              const trendSymbol =
-                contact.trend === 'APPROACHING'
-                  ? '▲'
-                  : contact.trend === 'RECEDING'
-                  ? '▼'
-                  : '•';
-              const label = contact.assignedCallsign || contact.name;
-              const shortLabel = label.length > 9 ? label.slice(0, 9) : label;
-              drawDeoverlappedTag(
-                fx,
-                fy,
-                `🛡 ${trendSymbol} ${shortLabel} ${contact.distanceMeters}m`,
-                '#6ee7b7'
-              );
+              const tagText = `${trendSymbol} ${shortLabel}${fusedBadge} ${contact.distanceMeters}m`;
+              drawDeoverlappedTag(ex, ey, tagText, `rgb(${baseRgb})`);
             }
           }
 
-          // 7. Render Squad Room Teammates
+          // 7. Render Squad Room Teammates (GREEN)
           for (const member of p.squadMembers) {
             if (member.peerId === p.selfPeerId) continue;
+            // If already rendered via fused BLE proximity arc above, skip duplicate generic dot
+            if (
+              renderedSquadMemberCallsigns.has(
+                member.callsign.trim().toUpperCase()
+              )
+            ) {
+              continue;
+            }
 
             const hasBothGps =
               p.selfLat !== null &&
@@ -585,11 +646,12 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = (props) => {
               ctx.stroke();
             }
 
+            // Squad members are GREEN (#10b981)
             ctx.fillStyle = isMedic
               ? '#ef4444'
               : isHit
               ? '#9ca3af'
-              : '#38bdf8';
+              : '#10b981';
             ctx.beginPath();
             ctx.arc(mx, my, 6, 0, Math.PI * 2);
             ctx.fill();
@@ -609,11 +671,11 @@ export const RadarDisplay: React.FC<RadarDisplayProps> = (props) => {
                     : Math.round(distMeters)
                 }m`
               : 'NO GPS';
-            ctx.fillStyle = isMedic ? '#fca5a5' : '#bae6fd';
+            ctx.fillStyle = isMedic ? '#fca5a5' : '#6ee7b7';
             ctx.font = 'bold 10px monospace';
             ctx.textAlign = 'center';
             ctx.fillText(
-              `${member.callsign}${statusBadge} ${distCaption}`,
+              `🛡 ${member.callsign}${statusBadge} ${distCaption}`,
               mx,
               my - 12
             );

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Radar,
   Bluetooth,
@@ -28,6 +28,7 @@ import {
   Filter,
   ShieldCheck,
   ShieldAlert,
+  Edit3,
 } from 'lucide-react';
 import {
   BleContact,
@@ -58,6 +59,8 @@ import { SquadPanel } from './components/SquadPanel';
 import { FieldManualModal } from './components/FieldManualModal';
 import { BleHudFilterMode, WatchHud } from './components/WatchHud';
 import { FriendlyRegistryModal } from './components/FriendlyRegistryModal';
+import { CallsignModal } from './components/CallsignModal';
+import { fuseDevices } from './services/deviceFusion';
 
 export type ScreenMode = 'BASIC' | 'WATCH' | 'ADVANCED';
 
@@ -93,9 +96,17 @@ export const App: React.FC = () => {
   const [selfPeerId] = useState(
     () => `op-${Math.random().toString(36).slice(2, 8)}`
   );
-  const [callsign, setCallsign] = useState(
-    () => `ALPHA-${Math.floor(1 + Math.random() * 9)}`
-  );
+  const [callsign, setCallsign] = useState(() => {
+    try {
+      return (
+        localStorage.getItem('aegistac_callsign') ||
+        `ALPHA-${Math.floor(1 + Math.random() * 9)}`
+      );
+    } catch {
+      return `ALPHA-${Math.floor(1 + Math.random() * 9)}`;
+    }
+  });
+  const [showCallsignModal, setShowCallsignModal] = useState<boolean>(false);
   const [roomCode, setRoomCode] = useState('ECHO-4');
   const [squadPin, setSquadPin] = useState('0451');
   const [playerStatus, setPlayerStatus] = useState<PlayerStatus>('ACTIVE');
@@ -444,14 +455,28 @@ export const App: React.FC = () => {
     bleEngineRef.current?.setWhitelist(nextWl);
   };
 
+  const handleSaveCallsign = (newCallsign: string) => {
+    const clean = newCallsign.trim().toUpperCase() || 'OPERATOR';
+    setCallsign(clean);
+    try {
+      localStorage.setItem('aegistac_callsign', clean);
+    } catch {
+      // ignore
+    }
+    p2pRef.current?.updateSelfState({ callsign: clean });
+    playTacticalTone(1200, 80);
+  };
+
   const handleWhitelistContact = (
     contact: BleContact,
-    customLabel?: string
+    customLabel?: string,
+    affiliation: 'SQUAD' | 'FRIENDLY' = 'FRIENDLY'
   ) => {
     const entry: WhitelistedDevice = {
       deviceId: contact.id,
-      label: customLabel || `ALLY-${contact.name.slice(0, 7)}`,
+      label: customLabel || contact.assignedCallsign || `ALLY-${contact.name.slice(0, 7)}`,
       addedBy: callsign,
+      affiliation,
     };
     const nextWl = [
       ...whitelist.filter((w) => w.deviceId !== contact.id),
@@ -477,11 +502,12 @@ export const App: React.FC = () => {
     playTacticalTone(540, 90);
   };
 
-  const handleRegisterManual = (deviceId: string, label: string) => {
+  const handleRegisterManual = (deviceId: string, label: string, affiliation: 'SQUAD' | 'FRIENDLY' = 'FRIENDLY') => {
     const entry: WhitelistedDevice = {
       deviceId,
       label: label.trim() || `ALLY-${deviceId.slice(-4)}`,
       addedBy: callsign,
+      affiliation,
     };
     const nextWl = [
       ...whitelist.filter((w) => w.deviceId !== deviceId),
@@ -492,7 +518,7 @@ export const App: React.FC = () => {
     playTacticalTone(1050, 70);
   };
 
-  const handleClaimProximity = (maxDistanceMeters: number = 8): number => {
+  const handleClaimProximity = (maxDistanceMeters: number = 8, affiliation: 'SQUAD' | 'FRIENDLY' = 'SQUAD'): number => {
     const eligible = contacts.filter(
       (c) => !c.isFriendly && c.distanceMeters <= maxDistanceMeters
     );
@@ -507,6 +533,7 @@ export const App: React.FC = () => {
       deviceId: c.id,
       label: `ALLY-${c.name.slice(0, 7)}`,
       addedBy: callsign,
+      affiliation,
     }));
 
     const targetIds = new Set(targets.map((t) => t.id));
@@ -655,14 +682,30 @@ export const App: React.FC = () => {
     playTacticalTone(940, 80);
   };
 
-  const bogeyCount = contacts.filter((c) => !c.isFriendly).length;
+  const fusedContacts = useMemo(() => {
+    return fuseDevices(contacts, squadMembers, whitelist, selfPeerId);
+  }, [contacts, squadMembers, whitelist, selfPeerId]);
+
+  const bogeyCount = fusedContacts.filter(
+    (c) =>
+      !c.isFriendly &&
+      c.affiliation !== 'SQUAD' &&
+      c.affiliation !== 'FRIENDLY'
+  ).length;
+
   const hudContacts =
     bleFilterMode === 'NONE'
       ? []
       : bleFilterMode === 'TOP_5'
-      ? contacts.slice(0, 5)
-      : contacts;
-  const closestBogey = hudContacts.find((c) => !c.isFriendly);
+      ? fusedContacts.slice(0, 5)
+      : fusedContacts;
+
+  const closestBogey = hudContacts.find(
+    (c) =>
+      !c.isFriendly &&
+      c.affiliation !== 'SQUAD' &&
+      c.affiliation !== 'FRIENDLY'
+  );
 
   const handleZoomIn = () => {
     setMaxRangeMeters((prev) => {
@@ -735,9 +778,15 @@ export const App: React.FC = () => {
               <div className="font-mono text-xs font-extrabold tracking-wider text-emerald-300 flex items-center gap-1.5 truncate">
                 <span className="truncate">AEGIS TAC</span>
                 <span className="text-[9px] font-mono text-emerald-400/60 font-semibold">v1.2.0</span>
-                <span className="text-[10px] bg-emerald-500/20 border border-emerald-500/40 px-1.5 py-0.2 rounded text-emerald-200 shrink-0">
-                  {callsign}
-                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowCallsignModal(true)}
+                  className="text-[10px] bg-emerald-500/20 hover:bg-emerald-500/40 border border-emerald-500/50 px-2 py-0.5 rounded text-emerald-200 shrink-0 font-bold flex items-center gap-1 cursor-pointer transition active:scale-95"
+                  title="Tap to change your Callsign / Name anytime while playing"
+                >
+                  <span>{callsign}</span>
+                  <Edit3 className="w-2.5 h-2.5 text-emerald-400" />
+                </button>
               </div>
               <div className="text-[10px] font-mono text-emerald-400/70 flex items-center gap-1.5 truncate">
                 <span>HDG {Math.round(headingDeg)}°</span>
@@ -851,6 +900,8 @@ export const App: React.FC = () => {
           bleFilterMode={bleFilterMode}
           squadMembers={squadMembers}
           selfPeerId={selfPeerId}
+          callsign={callsign}
+          onEditCallsign={() => setShowCallsignModal(true)}
           pings={pings}
           selfLat={selfLat}
           selfLng={selfLng}
@@ -1354,7 +1405,7 @@ export const App: React.FC = () => {
 
             {advTab === 'BLE' && (
               <BleContactsList
-                contacts={contacts}
+                contacts={fusedContacts}
                 whitelist={whitelist}
                 capabilities={capabilities}
                 isScanning={isScanning}
@@ -1652,9 +1703,13 @@ export const App: React.FC = () => {
               <div className="flex items-center gap-2">
                 <div
                   className={`w-3.5 h-3.5 rotate-45 shrink-0 ${
-                    selectedContactForDetail.isFriendly
-                      ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]'
-                      : 'bg-amber-400'
+                    selectedContactForDetail.affiliation === 'SQUAD'
+                      ? 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)]'
+                      : selectedContactForDetail.affiliation === 'FRIENDLY' || selectedContactForDetail.isFriendly
+                      ? 'bg-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.8)]'
+                      : selectedContactForDetail.distanceMeters <= 12
+                      ? 'bg-red-500'
+                      : 'bg-orange-400'
                   }`}
                 />
                 <div className="font-extrabold text-sm text-emerald-100 truncate">
@@ -1670,6 +1725,18 @@ export const App: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {selectedContactForDetail.fusedDeviceCount && selectedContactForDetail.fusedDeviceCount > 1 && (
+              <div className="px-2.5 py-1 rounded-lg bg-emerald-950/80 border border-emerald-400/60 flex items-center justify-between text-[10px] text-emerald-200">
+                <span className="font-extrabold flex items-center gap-1">
+                  <span>📱⌚</span>
+                  <span>FUSED UNIT</span>
+                </span>
+                <span className="font-bold text-emerald-300">
+                  {selectedContactForDetail.fusedDeviceCount} Paired Devices
+                </span>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2 text-xs text-emerald-300/80 bg-black/40 p-2 rounded-xl border border-emerald-500/20">
               <div>
@@ -1698,46 +1765,68 @@ export const App: React.FC = () => {
               </div>
               <div>
                 <span className="text-[10px] text-emerald-500 block">
-                  STATUS
+                  AFFILIATION
                 </span>
                 <span
                   className={`font-bold ${
-                    selectedContactForDetail.isFriendly
-                      ? 'text-cyan-400'
-                      : 'text-amber-400'
+                    selectedContactForDetail.affiliation === 'SQUAD'
+                      ? 'text-emerald-400'
+                      : selectedContactForDetail.affiliation === 'FRIENDLY' || selectedContactForDetail.isFriendly
+                      ? 'text-blue-400'
+                      : selectedContactForDetail.distanceMeters <= 12
+                      ? 'text-red-400'
+                      : 'text-orange-400'
                   }`}
                 >
-                  {selectedContactForDetail.isFriendly
-                    ? 'FRIENDLY ALLY'
-                    : 'UNKNOWN BOGEY'}
+                  {selectedContactForDetail.affiliation === 'SQUAD'
+                    ? 'SQUAD (GREEN)'
+                    : selectedContactForDetail.affiliation === 'FRIENDLY' || selectedContactForDetail.isFriendly
+                    ? 'FRIENDLY FOE (BLUE)'
+                    : selectedContactForDetail.distanceMeters <= 12
+                    ? 'ENEMY (RED)'
+                    : 'ENEMY (ORANGE)'}
                 </span>
               </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              {!selectedContactForDetail.isFriendly ? (
+              <div className="grid grid-cols-2 gap-1.5">
                 <button
                   type="button"
                   onClick={() => {
-                    handleWhitelistContact(selectedContactForDetail);
+                    handleWhitelistContact(selectedContactForDetail, undefined, 'SQUAD');
                     setSelectedContactForDetail(null);
                   }}
-                  className="w-full py-2 px-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-black text-xs flex items-center justify-center gap-1.5 shadow cursor-pointer active:scale-95 transition"
+                  className="py-1.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-black font-extrabold text-[11px] flex items-center justify-center gap-1 shadow cursor-pointer active:scale-95 transition"
                 >
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>MARK AS FRIENDLY ALLY</span>
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>SET SQUAD</span>
                 </button>
-              ) : (
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleWhitelistContact(selectedContactForDetail, undefined, 'FRIENDLY');
+                    setSelectedContactForDetail(null);
+                  }}
+                  className="py-1.5 px-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-[11px] flex items-center justify-center gap-1 shadow cursor-pointer active:scale-95 transition"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>SET ALLY</span>
+                </button>
+              </div>
+
+              {selectedContactForDetail.isFriendly && (
                 <button
                   type="button"
                   onClick={() => {
                     handleRemoveWhitelist(selectedContactForDetail.id);
                     setSelectedContactForDetail(null);
                   }}
-                  className="w-full py-2 px-3 rounded-xl bg-red-950/80 hover:bg-red-900 border border-red-500/50 text-red-200 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition"
+                  className="w-full py-1.5 px-3 rounded-xl bg-red-950/80 hover:bg-red-900 border border-red-500/50 text-red-200 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition"
                 >
                   <ShieldAlert className="w-4 h-4" />
-                  <span>UNMARK (SET TO BOGEY)</span>
+                  <span>UNCLAIM (SET TO ENEMY)</span>
                 </button>
               )}
 
@@ -1775,6 +1864,14 @@ export const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Dynamic Live Callsign / Operator Name Modal */}
+      <CallsignModal
+        isOpen={showCallsignModal}
+        onClose={() => setShowCallsignModal(false)}
+        currentCallsign={callsign}
+        onSaveCallsign={handleSaveCallsign}
+      />
     </div>
   );
 };

@@ -70,6 +70,20 @@ public class WatchRadarView extends View implements SensorEventListener {
         NONE
     }
 
+    public enum Affiliation {
+        SQUAD,
+        FRIENDLY,
+        BOGEY
+    }
+
+    private static final String[] CALLSIGN_PRESETS = {
+            "ALPHA-1", "BRAVO-2", "CHARLIE-3", "DELTA-4",
+            "GHOST", "VIPER", "REAPER", "SHADOW",
+            "TITAN", "ROGUE", "SPECTER", "HUNTER", "FALCON", "COBRA"
+    };
+    private int callsignIndex = 0;
+    private String myCallsign = "ALPHA-1";
+
     private static final int[] ZOOM_SCALES = {5, 10, 20, 35, 50, 75, 120};
 
     private static class BleContact {
@@ -86,6 +100,8 @@ public class WatchRadarView extends View implements SensorEventListener {
         int trend = 0; // 1 = closing, -1 = receding, 0 = stable
         long lastSeen;
         boolean isFriendly;
+        Affiliation affiliation = Affiliation.BOGEY;
+        int fusedCount = 1;
         boolean simulated;
         float lastScreenX;
         float lastScreenY;
@@ -226,6 +242,10 @@ public class WatchRadarView extends View implements SensorEventListener {
             Set<String> saved = prefs.getStringSet("friendly_whitelist", null);
             if (saved != null) {
                 friendlyWhitelist.addAll(saved);
+            }
+            String savedCallsign = prefs.getString("callsign", null);
+            if (savedCallsign != null && !savedCallsign.trim().isEmpty()) {
+                myCallsign = savedCallsign.trim().toUpperCase(Locale.US);
             }
         } catch (Exception ignored) {
         }
@@ -666,8 +686,17 @@ public class WatchRadarView extends View implements SensorEventListener {
         return headUpMode ? (norm + headingDeg) % 360f : norm;
     }
 
+    private String extractBaseCallsign(String name) {
+        if (name == null) return "";
+        return name.replaceAll("(?i)['’]s?\\s*(phone|watch|smartwatch|band|tag|tracker)", "")
+                   .replaceAll("(?i)[-_ ]+(watch|phone|sw|ph|tag|w5|w6|gw\\d*|aw\\d*)$", "")
+                   .replaceAll("(?i)\\s*\\((watch|phone|wearable|tag)\\)", "")
+                   .trim().toUpperCase(Locale.US);
+    }
+
     /**
      * Retrieves the filtered list of BLE contacts according to FilterMode (TOP_5, ALL, or NONE)
+     * Fuses multiple devices belonging to the same player (e.g. phone + watch) into a single unit.
      */
     private List<BleContact> getVisibleContacts() {
         if (filterMode == FilterMode.NONE && !simEnabled) {
@@ -677,17 +706,41 @@ public class WatchRadarView extends View implements SensorEventListener {
         synchronized (this) {
             sorted = new ArrayList<>(contacts.values());
         }
-        Collections.sort(sorted, new Comparator<BleContact>() {
+
+        // Collapse / Fuse contacts that belong to the same person (e.g. Phone + Smartwatch)
+        Map<String, BleContact> fusedMap = new HashMap<>();
+        for (BleContact c : sorted) {
+            String base = extractBaseCallsign(c.name);
+            String key = (base.length() >= 3 && !base.startsWith("BLE") && !base.startsWith("BT") && !base.startsWith("SIG")) ? base : c.id;
+            BleContact existing = fusedMap.get(key);
+            if (existing == null) {
+                fusedMap.put(key, c);
+            } else {
+                existing.fusedCount++;
+                if (c.distanceMeters < existing.distanceMeters) {
+                    existing.distanceMeters = c.distanceMeters;
+                }
+                if (c.smoothedRssi > existing.smoothedRssi) {
+                    existing.smoothedRssi = c.smoothedRssi;
+                    existing.bearingDeg = c.bearingDeg;
+                }
+                if (c.isFriendly) existing.isFriendly = true;
+                if (c.affiliation == Affiliation.SQUAD) existing.affiliation = Affiliation.SQUAD;
+            }
+        }
+
+        List<BleContact> fused = new ArrayList<>(fusedMap.values());
+        Collections.sort(fused, new Comparator<BleContact>() {
             @Override
             public int compare(BleContact a, BleContact b) {
                 return Double.compare(a.distanceMeters, b.distanceMeters);
             }
         });
 
-        if (filterMode == FilterMode.TOP_5 && sorted.size() > 5) {
-            return new ArrayList<>(sorted.subList(0, 5));
+        if (filterMode == FilterMode.TOP_5 && fused.size() > 5) {
+            return new ArrayList<>(fused.subList(0, 5));
         }
-        return sorted;
+        return fused;
     }
 
     @Override
@@ -798,31 +851,10 @@ public class WatchRadarView extends View implements SensorEventListener {
             // Keep arcs compact when many contacts are visible
             float effectiveSpread = visible.size() > 5 ? Math.min(36f, c.arcSpreadDeg) : Math.min(52f, c.arcSpreadDeg);
 
-            if (!c.isFriendly) {
-                boolean danger = c.distanceMeters <= 10.0;
-                int color = danger ? Color.parseColor("#ef4444") : Color.parseColor("#f59e0b");
-                arcGlowPaint.setColor(Color.argb(55, Color.red(color), Color.green(color), Color.blue(color)));
-                arcGlowPaint.setStrokeWidth(minDim * 0.024f);
-                arcCorePaint.setColor(color);
-                arcCorePaint.setStrokeWidth(minDim * 0.009f);
+            String fusedBadge = c.fusedCount > 1 ? " [2 DEV]" : "";
 
-                RectF arcRect = new RectF(cx - rPx, cy - rPx, cx + rPx, cy + rPx);
-                float startDeg = (float) Math.toDegrees(cRad) - effectiveSpread / 2f;
-                canvas.drawArc(arcRect, startDeg, effectiveSpread, false, arcGlowPaint);
-                canvas.drawArc(arcRect, startDeg, effectiveSpread, false, arcCorePaint);
-
-                fillPaint.setColor(color);
-                canvas.drawCircle(bx, by, minDim * 0.015f, fillPaint);
-
-                // In swarmed mode (>6 visible), only draw text labels on the 6 closest nodes to avoid screen clutter
-                if (idx < 6) {
-                    String arrow = c.trend > 0 ? "▲" : c.trend < 0 ? "▼" : "";
-                    String shortNm = c.name.length() > 8 ? c.name.substring(0, 8) : c.name;
-                    String caption = arrow + c.distanceMeters + "m " + shortNm;
-                    drawDeoverlappedLabel(canvas, caption, bx, by - minDim * 0.025f, color, minDim * 0.026f, occupiedLabels);
-                }
-            } else {
-                // Friendly Squad: Marked as Green with directional proximity arc
+            if (c.affiliation == Affiliation.SQUAD) {
+                // 1. SQUAD MEMBERS: GREEN with directional proximity arc
                 int greenColor = Color.parseColor("#10b981");
                 arcGlowPaint.setColor(Color.argb(70, 16, 185, 129));
                 arcGlowPaint.setStrokeWidth(minDim * 0.024f);
@@ -838,8 +870,50 @@ public class WatchRadarView extends View implements SensorEventListener {
                 canvas.drawCircle(bx, by, minDim * 0.018f, fillPaint);
 
                 String shortNm = c.name.length() > 7 ? c.name.substring(0, 7) : c.name;
-                String caption = "🛡" + shortNm + " " + c.distanceMeters + "m";
+                String caption = "🛡" + shortNm + fusedBadge + " " + c.distanceMeters + "m";
                 drawDeoverlappedLabel(canvas, caption, bx, by - minDim * 0.025f, Color.parseColor("#6ee7b7"), minDim * 0.026f, occupiedLabels);
+            } else if (c.affiliation == Affiliation.FRIENDLY || c.isFriendly) {
+                // 2. FRIENDLY FOES (Non-Squad Allies): BLUE with directional proximity arc
+                int blueColor = Color.parseColor("#3b82f6");
+                arcGlowPaint.setColor(Color.argb(70, 59, 130, 246));
+                arcGlowPaint.setStrokeWidth(minDim * 0.024f);
+                arcCorePaint.setColor(blueColor);
+                arcCorePaint.setStrokeWidth(minDim * 0.009f);
+
+                RectF arcRect = new RectF(cx - rPx, cy - rPx, cx + rPx, cy + rPx);
+                float startDeg = (float) Math.toDegrees(cRad) - effectiveSpread / 2f;
+                canvas.drawArc(arcRect, startDeg, effectiveSpread, false, arcGlowPaint);
+                canvas.drawArc(arcRect, startDeg, effectiveSpread, false, arcCorePaint);
+
+                fillPaint.setColor(Color.parseColor("#60a5fa"));
+                canvas.drawCircle(bx, by, minDim * 0.018f, fillPaint);
+
+                String shortNm = c.name.length() > 7 ? c.name.substring(0, 7) : c.name;
+                String caption = "🔷" + shortNm + fusedBadge + " " + c.distanceMeters + "m";
+                drawDeoverlappedLabel(canvas, caption, bx, by - minDim * 0.025f, Color.parseColor("#93c5fd"), minDim * 0.026f, occupiedLabels);
+            } else {
+                // 3. ENEMIES / BOGEYS: RED when close (<= 12m) and ORANGE when far (> 12m)
+                boolean danger = c.distanceMeters <= 12.0;
+                int color = danger ? Color.parseColor("#ef4444") : Color.parseColor("#f97316");
+                arcGlowPaint.setColor(Color.argb(55, Color.red(color), Color.green(color), Color.blue(color)));
+                arcGlowPaint.setStrokeWidth(minDim * 0.024f);
+                arcCorePaint.setColor(color);
+                arcCorePaint.setStrokeWidth(minDim * 0.009f);
+
+                RectF arcRect = new RectF(cx - rPx, cy - rPx, cx + rPx, cy + rPx);
+                float startDeg = (float) Math.toDegrees(cRad) - effectiveSpread / 2f;
+                canvas.drawArc(arcRect, startDeg, effectiveSpread, false, arcGlowPaint);
+                canvas.drawArc(arcRect, startDeg, effectiveSpread, false, arcCorePaint);
+
+                fillPaint.setColor(color);
+                canvas.drawCircle(bx, by, minDim * 0.015f, fillPaint);
+
+                if (idx < 6) {
+                    String arrow = c.trend > 0 ? "▲" : c.trend < 0 ? "▼" : "";
+                    String shortNm = c.name.length() > 8 ? c.name.substring(0, 8) : c.name;
+                    String caption = arrow + c.distanceMeters + "m " + shortNm + fusedBadge;
+                    drawDeoverlappedLabel(canvas, caption, bx, by - minDim * 0.025f, color, minDim * 0.026f, occupiedLabels);
+                }
             }
         }
 
@@ -979,13 +1053,13 @@ public class WatchRadarView extends View implements SensorEventListener {
         float botBtnW = minDim * 0.18f;
         float botY = h - minDim * 0.024f - topPillH;
 
-        // Dedicated Version Badge right above bottom buttons
+        // Dedicated Version & Operator Callsign Badge right above bottom buttons
         float versionY = botY - minDim * 0.016f;
-        versionRect.set(cx - minDim * 0.25f, versionY - minDim * 0.024f, cx + minDim * 0.25f, versionY + minDim * 0.008f);
-        textPaint.setTextSize(minDim * 0.022f);
+        versionRect.set(cx - minDim * 0.38f, versionY - minDim * 0.026f, cx + minDim * 0.38f, versionY + minDim * 0.012f);
+        textPaint.setTextSize(minDim * 0.023f);
         textPaint.setTextAlign(Paint.Align.CENTER);
-        textPaint.setColor(Color.argb(165, 52, 211, 153));
-        canvas.drawText("AEGIS TAC " + APP_VERSION, cx, versionY, textPaint);
+        textPaint.setColor(Color.argb(210, 52, 211, 153));
+        canvas.drawText("AEGIS TAC " + APP_VERSION + " • 🏷 " + myCallsign, cx, versionY, textPaint);
         bottomModeRect.set(cx - botBtnW * 1.5f - 6f, botY, cx - botBtnW * 0.5f - 6f, botY + topPillH);
         bottomClrRect.set(cx - botBtnW * 0.5f, botY, cx + botBtnW * 0.5f, botY + topPillH);
         quitBtnRect.set(cx + botBtnW * 0.5f + 6f, botY, cx + botBtnW * 1.5f + 6f, botY + topPillH);
@@ -1114,8 +1188,15 @@ public class WatchRadarView extends View implements SensorEventListener {
         }
 
         if (versionRect.contains(x, y)) {
-            statusBanner = "AEGIS TAC " + APP_VERSION + " (BUILD " + APP_BUILD + ")";
-            vibrateWatch(45);
+            callsignIndex = (callsignIndex + 1) % CALLSIGN_PRESETS.length;
+            myCallsign = CALLSIGN_PRESETS[callsignIndex];
+            try {
+                SharedPreferences prefs = getContext().getSharedPreferences("aegistac_prefs", Context.MODE_PRIVATE);
+                prefs.edit().putString("callsign", myCallsign).apply();
+            } catch (Exception ignored) {
+            }
+            statusBanner = "CALLSIGN: " + myCallsign;
+            vibrateWatch(60);
             return true;
         }
 

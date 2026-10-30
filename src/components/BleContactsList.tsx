@@ -239,26 +239,32 @@ export const BleContactsList: React.FC<BleContactsListProps> = ({
           </div>
         ) : (
           filteredContacts.map((contact, idx) => {
+            const isSquad = contact.affiliation === 'SQUAD';
+            const isFriendly = contact.affiliation === 'FRIENDLY' || (contact.isFriendly && !isSquad);
             const isClose = contact.distanceMeters <= 12;
             const isClosestTouching = idx === 0 && contact.distanceMeters <= 1.8;
             return (
               <div
                 key={contact.id}
                 className={`flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg border font-mono text-[11px] ${
-                  contact.isFriendly
-                    ? 'bg-cyan-950/35 border-cyan-500/40 text-cyan-100'
+                  isSquad
+                    ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-100'
+                    : isFriendly
+                    ? 'bg-blue-950/40 border-blue-500/50 text-blue-100'
                     : isClose
                     ? 'bg-red-950/40 border-red-500/50 text-red-100'
-                    : 'bg-amber-950/25 border-amber-500/35 text-amber-100'
+                    : 'bg-orange-950/30 border-orange-500/40 text-orange-100'
                 }`}
               >
                 <div className="flex items-center gap-1.5 min-w-0">
-                  {contact.isFriendly ? (
-                    <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  {isSquad ? (
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  ) : isFriendly ? (
+                    <ShieldCheck className="w-3.5 h-3.5 text-blue-400 shrink-0" />
                   ) : (
                     <ShieldAlert
                       className={`w-3.5 h-3.5 shrink-0 ${
-                        isClose ? 'text-red-400 animate-pulse' : 'text-amber-400'
+                        isClose ? 'text-red-400 animate-pulse' : 'text-orange-400'
                       }`}
                     />
                   )}
@@ -267,6 +273,11 @@ export const BleContactsList: React.FC<BleContactsListProps> = ({
                       <span className="truncate">
                         {contact.assignedCallsign || contact.name}
                       </span>
+                      {contact.fusedDeviceCount && contact.fusedDeviceCount > 1 && (
+                        <span className="text-[8px] px-1 py-0.2 rounded bg-emerald-500/30 border border-emerald-400/60 text-emerald-200 font-extrabold shrink-0">
+                          📱⌚ {contact.fusedDeviceCount} DEV
+                        </span>
+                      )}
                       {isClosestTouching && (
                         <span className="text-[8px] px-1 py-0.2 rounded bg-emerald-400 text-black font-extrabold shrink-0">
                           CLOSEST
@@ -274,6 +285,11 @@ export const BleContactsList: React.FC<BleContactsListProps> = ({
                       )}
                     </div>
                     <div className="text-[9px] opacity-75 truncate">
+                      {isSquad
+                        ? '🛡 SQUAD • '
+                        : isFriendly
+                        ? '🔷 ALLY • '
+                        : '⚠ BOGEY • '}
                       {contact.smoothedRssi}dBm • {Math.round(contact.estimatedBearingDeg)}° •{' '}
                       {contact.trend === 'APPROACHING'
                         ? '▲ CLOSING'

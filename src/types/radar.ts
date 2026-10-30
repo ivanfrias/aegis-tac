@@ -6,6 +6,8 @@ export type SignalTrend = 'APPROACHING' | 'RECEDING' | 'STABLE';
 
 export type PingType = 'ENEMY' | 'OBJECTIVE' | 'DANGER';
 
+export type UnitAffiliation = 'SQUAD' | 'FRIENDLY' | 'BOGEY';
+
 export interface BleContact {
   id: string;
   name: string;
@@ -21,6 +23,10 @@ export interface BleContact {
   peakRssi: number;
   lastSeen: number;
   isFriendly: boolean;
+  affiliation?: UnitAffiliation;
+  fusedDeviceCount?: number;
+  pairedDeviceIds?: string[];
+  isSelfDevice?: boolean;
   assignedCallsign?: string;
   simulated?: boolean;
 }
@@ -55,6 +61,7 @@ export interface WhitelistedDevice {
   deviceId: string;
   label: string;
   addedBy: string;
+  affiliation?: 'SQUAD' | 'FRIENDLY';
 }
 
 export type P2PMessage =
