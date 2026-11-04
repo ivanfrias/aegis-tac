@@ -1,4 +1,6 @@
 .aider*
+.agents/
+skills-lock.json
 .vercel/
 node_modules/
 dist/
@@ -6,4 +8,7 @@ dist/
 .DS_Store
 .env
 .env.*
-.vercel
+*.log
+.idea/
+.vscode/
+*.iml

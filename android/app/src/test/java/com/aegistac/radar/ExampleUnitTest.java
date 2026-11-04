@@ -1,4 +1,4 @@
-package com.getcapacitor.myapp;
+package com.aegistac.radar;
 
 import static org.junit.Assert.*;
 
