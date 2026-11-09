@@ -63,8 +63,8 @@ A zero-backend, mobile-first Progressive Web App (PWA) and native Android / Wear
 
 ### 2. Development Server
 ```bash
-git clone https://github.com/ivanfrias/airsoft-radar.git
-cd airsoft-radar
+git clone https://github.com/ivanfrias/aegis-tac.git
+cd aegis-tac
 npm install
 npm run dev
 ```

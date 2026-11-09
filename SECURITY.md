@@ -16,7 +16,7 @@
 If you discover a security vulnerability or sensitive data exposure in Aegis Tac, please report it responsibly:
 
 1. **Do not create a public issue** disclosing the vulnerability.
-2. Open a private security advisory on GitHub under the **Security** tab of the repository (`https://github.com/ivanfrias/airsoft-radar/security/advisories/new`).
+2. Open a private security advisory on GitHub under the **Security** tab of the repository (`https://github.com/ivanfrias/aegis-tac/security/advisories/new`).
 3. Provide a clear description, reproduction steps, and potential impact.
 
 We take security reports seriously and will acknowledge receipt and work on a prompt resolution.

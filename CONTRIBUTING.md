@@ -25,8 +25,8 @@ Please be respectful, constructive, and helpful when participating in issues and
 
 1. Fork and clone the repository:
    ```bash
-   git clone https://github.com/ivanfrias/airsoft-radar.git
-   cd airsoft-radar
+   git clone https://github.com/ivanfrias/aegis-tac.git
+   cd aegis-tac
    ```
 
 2. Install dependencies:
@@ -46,7 +46,7 @@ Please be respectful, constructive, and helpful when participating in issues and
 ## Project Structure
 
 ```text
-airsoft-radar/
+aegis-tac/
 ├── android/               # Native Android & Wear OS watch bridge module (Capacitor)
 │   └── app/src/main/java/com/aegistac/radar/
 │       ├── MainActivity.java
